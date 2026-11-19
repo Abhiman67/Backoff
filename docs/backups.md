@@ -1,38 +1,46 @@
-# Backups & Recovery (spec Phase 9)
+# Back up and restore data
 
-## SQLite (local dev)
+The repository does not schedule production backups. Configure backup frequency, retention, encryption, and restore access with your database and storage providers.
+
+## SQLite
+
+The default local database is `prisma/dev.db`. Stop the app before copying the file, or use SQLite's online backup API while writes continue.
+
 ```bash
-# backup (stop writes first or copy with SQLite backup API)
-cp prisma/dev.db /backups/backoff-$(date +%F).db
-# restore
-cp /backups/backoff-<date>.db prisma/dev.db
-# verify
+mkdir -p /backups
+cp prisma/dev.db "/backups/vidyasarthi-$(date +%F).db"
+```
+
+To restore a copy, stop the app and replace `prisma/dev.db`. Then check the schema:
+
+```bash
 bunx prisma migrate status
 ```
 
-## PostgreSQL (staging/prod)
+## PostgreSQL
+
+Create a custom-format dump with `pg_dump`:
+
 ```bash
-# nightly logical backup (cron)
-pg_dump "$DATABASE_URL" -Fc -f /backups/backoff-$(date +%F).dump
-# point-in-time recovery requires WAL archiving; enable on the server:
-#   wal_level=replica, archive_mode=on, archive_command='cp %p /wal/%f'
-# restore
-pg_restore -d "$DATABASE_URL" /backups/backoff-<date>.dump
-# verify
-psql "$DATABASE_URL" -c "SELECT count(*) FROM \"User\";"
+pg_dump "$DATABASE_URL" -Fc -f "/backups/vidyasarthi-$(date +%F).dump"
 ```
 
-## Object storage
-- Local driver (`./storage`): include in filesystem backups.
-- S3-compatible: enable bucket versioning; lifecycle-expire noncurrent
-  versions after 30 days.
+Restore into a scratch or replacement database before pointing the app at it:
 
-## Redis (queue)
-No durable state lives only in Redis — JobRecords persist in the database,
-so a Redis loss only delays (not loses) jobs. The worker replays repeat
-schedules on restart.
+```bash
+pg_restore --dbname "$DATABASE_URL" /backups/vidyasarthi-YYYY-MM-DD.dump
+```
 
-## Recovery drill (quarterly)
-1. Restore the latest backup to a scratch database.
-2. Point a staging build at it; run `bun run test:integration`.
-3. Record result + restore duration in docs/staging-validation.md.
+Point-in-time recovery needs WAL archiving configured on the PostgreSQL service. The repository does not configure that service setting.
+
+## Uploaded files
+
+The local storage driver writes under `./storage`. Include that directory in local backups. The current S3-compatible adapter cannot read or delete remote objects, so do not rely on it for production file data.
+
+## Redis jobs
+
+The database stores job records. Redis carries queued work when Redis mode is enabled. Keep the database backup and Redis worker configuration; after restoring, check queued and failed job records before restarting the worker.
+
+## Restore drill
+
+Restore a recent backup into an isolated environment. Start the app against the restored database and storage copy. Verify sign-in, notes, files, and pending jobs. Record the date, backup source, restore duration, and outcome in your operations log.

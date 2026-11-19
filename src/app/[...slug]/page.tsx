@@ -3,7 +3,7 @@ import Link from "next/link";
 import PublicChrome from "@/components/PublicChrome";
 
 const TITLES: Record<string, [string, string]> = {
-  "how-it-works": ["How it works", "1. Tell Backoff where you want to go. 2. Choose your team. 3. Backoff daily progress."],
+  "how-it-works": ["How it works", "1. Set your goals. 2. Choose your AI team. 3. Build momentum with a clear daily plan."],
   pricing: ["Pricing", "Starter: 2 agents. Student Pro: unlimited agents + projects + career. Campus: shared spaces."],
   privacy: ["Privacy", "You can view, export and delete profile, memories and files. No training on your data without consent."],
   terms: ["Terms", "Student-friendly use. You approve sends, submits and deletes. Academic integrity: coaching first."],
@@ -19,7 +19,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string[
   return (
     <PublicChrome>
       <section className="wrap ref-section reveal in" style={{ maxWidth: 760 }}>
-        <div className="kicker">Backoff</div>
+        <div className="kicker">VidyaSarthi</div>
         <h1 data-split style={{ fontSize: "clamp(36px,5vw,58px)", letterSpacing: "-0.065em", margin: "0 0 12px" }}>{title}</h1>
         <p className="lead">{body}</p>
         <div className="actions">

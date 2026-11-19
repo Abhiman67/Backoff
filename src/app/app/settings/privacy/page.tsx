@@ -9,36 +9,23 @@ export default function PrivacySettings() {
   const [deleting, setDeleting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [exportError, setExportError] = useState("");
 
   async function exportData() {
     setExporting(true);
+    setExportError("");
     try {
-      const [profile, projects, tasks, files, applications, approvals] = await Promise.all([
-        fetch("/api/profile").then((r) => r.json()),
-        fetch("/api/projects").then((r) => r.json()),
-        fetch("/api/tasks").then((r) => r.json()),
-        fetch("/api/files").then((r) => r.json()),
-        fetch("/api/applications").then((r) => r.json()),
-        fetch("/api/approvals").then((r) => r.json()),
-      ]);
-
-      const exportPayload = {
-        exportedAt: new Date().toISOString(),
-        user: profile.user,
-        projects: projects.projects,
-        tasks: tasks.tasks,
-        files: files.files,
-        applications: applications.applications,
-        approvals: approvals.approvals,
-      };
-
-      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: "application/json" });
+      const response = await fetch("/api/privacy/export", { cache: "no-store" });
+      if (!response.ok) throw new Error("Your export could not be prepared. Please try again.");
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `backoff-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `vidyasarthi-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setExportError("Your data export could not be prepared. Please try again.");
     } finally {
       setExporting(false);
     }
@@ -69,7 +56,7 @@ export default function PrivacySettings() {
         </Link>
       </div>
 
-      {/* Page Header with Backoff Icon System */}
+      {/* Page Header with VidyaSarthi Icon System */}
       <div className="page-head" style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div className="agent-icon green" style={{ width: 44, height: 44, fontSize: 20 }}>
@@ -96,14 +83,14 @@ export default function PrivacySettings() {
           </div>
 
           <p style={{ fontSize: 13, color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 14px" }}>
-            Download a complete JSON archive containing your academic profile, active project milestones, tasks, notes metadata, job applications, and safety approval logs.
+            Download your workspace archive with note content, courses and mastery, tasks, projects, conversations, files, and account activity. Password hashes and integration tokens are excluded.
           </p>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
             <span className="tag">Profile and courses</span>
             <span className="tag">Milestones and tasks</span>
-            <span className="tag">File metadata</span>
-            <span className="tag">Safety logs</span>
+            <span className="tag">Notes and revisions</span>
+            <span className="tag">Learning history</span>
           </div>
 
           <button
@@ -113,6 +100,7 @@ export default function PrivacySettings() {
           >
             {exporting ? "Compiling export…" : "Download all data (JSON)"}
           </button>
+          {exportError && <p role="alert" style={{ color: "#a23627", fontSize: 12, margin: "10px 0 0" }}>{exportError}</p>}
         </section>
 
         {/* Danger Zone Panel */}

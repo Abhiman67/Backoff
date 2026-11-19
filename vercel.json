@@ -1,0 +1,12 @@
+{
+  "buildCommand": "npm run build:vercel",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["bom1"],
+  "crons": [
+    {
+      "path": "/api/responsibilities/tick",
+      "schedule": "0 1 * * *"
+    }
+  ]
+}

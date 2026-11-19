@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "agenthub",
+      "name": "vidyasarthi",
       "dependencies": {
         "bullmq": "^6.3.9",
         "next": "^16.3.4",

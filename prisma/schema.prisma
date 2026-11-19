@@ -58,6 +58,7 @@ model Profile {
   subjects       Json     @default("[]")
   skills         Json     @default("[]")
   interests      Json     @default("[]")
+  notificationPreferences Json @default("{\"classroom\":true,\"routines\":true,\"approvals\":true}")
   studyHours     Int?
   careerTarget   String?
   onboardingDone Boolean  @default(false)
@@ -175,6 +176,8 @@ model File {
   textContent   String      @default("")
   storageKey    String?
   failureReason String?
+  sourceProvider String?
+  sourceExternalId String?
   subjectId     String?
   subject       Subject?    @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   projectId     String?
@@ -190,6 +193,7 @@ model File {
   revisions     NoteRevision[]
 
   @@index([ownerId, status])
+  @@unique([ownerId, sourceProvider, sourceExternalId])
   @@index([ownerId, projectId])
   @@index([ownerId, careerGoalId])
 }

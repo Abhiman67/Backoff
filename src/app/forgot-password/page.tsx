@@ -43,7 +43,7 @@ export default function ForgotPage() {
     <main className="wrap" style={{ padding: "60px 0" }}>
       <ScrollMotion />
       <div style={{ textAlign: "center", marginBottom: 24 }}>
-        <Link className="brand" href="/" style={{ justifyContent: "center" }}><LogoMark /> Backoff</Link>
+        <Link className="brand" href="/" style={{ justifyContent: "center" }}><LogoMark /> VidyaSarthi</Link>
       </div>
       <div className="login-card reveal in">
         <div className="eyebrow">Account recovery</div>

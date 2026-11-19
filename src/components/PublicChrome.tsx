@@ -9,7 +9,7 @@ export default function PublicChrome({ children }: { children: React.ReactNode }
       <div className="scroll-progress" aria-hidden="true"><i /></div>
       <header className="site-header">
         <nav className="wrap header-inner" aria-label="Primary">
-          <Link className="brand" href="/"><LogoMark /> Backoff</Link>
+          <Link className="brand" href="/"><LogoMark /> VidyaSarthi</Link>
           <div className="navlinks">
             <Link href="/agents">Agents</Link>
             <Link href="/how-it-works">How it works</Link>
@@ -36,12 +36,12 @@ export default function PublicChrome({ children }: { children: React.ReactNode }
       <main id="main">{children}</main>
       <footer className="site-footer">
         <div className="wrap footer-top">
-          <div className="footer-brand"><div className="brand"><LogoMark /> Backoff</div><p>A focused AI workspace for students who want to learn deeply, build confidently and move forward.</p><p className="footer-badge">⦿ Human-led, AI-assisted · Approval-first</p></div>
+          <div className="footer-brand"><div className="brand"><LogoMark /> VidyaSarthi</div><p>A focused AI workspace for students who want to learn deeply, build confidently and move forward.</p><p className="footer-badge">⦿ Human-led, AI-assisted · Approval-first</p></div>
           <div className="footer-column"><strong>Product</strong><Link href="/agents">AI agents</Link><Link href="/how-it-works">How it works</Link><Link href="/pricing">Plans &amp; access</Link><Link href="/signup">Get started</Link></div>
           <div className="footer-column"><strong>Resources</strong><Link href="/#use-cases">Use cases</Link><Link href="/#faq">FAQ</Link><Link href="/login">Sign in</Link><Link href="/forgot-password">Reset password</Link></div>
           <div className="footer-column"><strong>Trust</strong><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/security">Security</Link><Link href="/accessibility">Accessibility</Link><Link href="/status">Status</Link><a href="mailto:hello@backoff.ai">hello@backoff.ai</a></div>
         </div>
-        <div className="wrap footer-bottom"><span>© 2026 Backoff. Built for ambitious students.</span><span>Made for meaningful progress · <Link href="/privacy">Privacy-first</Link></span></div>
+        <div className="wrap footer-bottom"><span>© 2026 VidyaSarthi. Built for ambitious students.</span><span>Made for meaningful progress · <Link href="/privacy">Privacy-first</Link></span></div>
       </footer>
     </>
   );

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import PublicChrome from "@/components/PublicChrome";
 
-export const metadata: Metadata = { title: "Accessibility — Backoff", description: "Our WCAG 2.2 AA commitment: keyboard access, focus states, contrast, reduced motion." };
+export const metadata: Metadata = { title: "Accessibility — VidyaSarthi", description: "Our WCAG 2.2 AA commitment: keyboard access, focus states, contrast, reduced motion." };
 
 export default function AccessibilityPage() {
   return (

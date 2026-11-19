@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { PauseAllRoutines } from "@/components/PauseAllRoutines";
+import { NotificationPreferences } from "@/components/NotificationPreferences";
 
 export default async function SettingsPage() {
   const session = await auth();
@@ -17,10 +18,11 @@ export default async function SettingsPage() {
       })
     : null;
 
-  const [agentCount, fileCount, taskCount] = await Promise.all([
+  const [agentCount, fileCount, taskCount, subscription] = await Promise.all([
     user ? db.agent.count({ where: { ownerId: user.id } }) : 0,
-    user ? db.file.count({ where: { ownerId: user.id } }) : 0,
+    user ? db.file.count({ where: { ownerId: user.id, status: { not: "deleted" } } }) : 0,
     user ? db.task.count({ where: { ownerId: user.id } }) : 0,
+    user ? db.subscription.findUnique({ where: { userId: user.id }, select: { plan: true, status: true } }) : null,
   ]);
 
   const cards = [
@@ -46,7 +48,7 @@ export default async function SettingsPage() {
       href: "/app/usage",
       icon: "◧",
       color: "blue",
-      badge: "Student Pro (Active)",
+      badge: subscription?.status === "active" && subscription.plan !== "free" ? subscription.plan.replace(/_/g, " ") : "Free plan",
     },
     {
       title: "Privacy, Export & Security",
@@ -54,7 +56,7 @@ export default async function SettingsPage() {
       href: "/app/settings/privacy",
       icon: "⚿",
       color: "green",
-      badge: "GDPR Compliant",
+      badge: "Privacy controls",
     },
     {
       title: "Security Activity",
@@ -66,7 +68,7 @@ export default async function SettingsPage() {
     },
     {
       title: "Connected Integrations",
-      desc: "Connect Drive, Classroom, Calendar, GitHub, Notion and Gmail with minimum scopes. Revoke anytime.",
+      desc: "Connect live Google sync for Drive, Classroom, and Calendar. GitHub, Notion, and Gmail agent actions are preview only.",
       href: "/app/settings/integrations",
       icon: "◍",
       color: "peach",
@@ -111,7 +113,7 @@ export default async function SettingsPage() {
           <div className="grow">
             <h2 style={{ fontSize: 18, margin: "0 0 2px" }}>{user.name}</h2>
             <p style={{ margin: 0, fontSize: 12, color: "var(--color-muted)" }}>
-              {user.email} · {taskCount} tasks · {fileCount} notes uploaded
+              {user.email} · {taskCount} tasks · {fileCount} files uploaded
             </p>
           </div>
           <Link href="/app/settings/profile" className="button secondary sm">
@@ -123,6 +125,8 @@ export default async function SettingsPage() {
         <h2 style={{ fontSize: 16 }}>Workspace</h2>
         <p style={{ fontSize: 13, color: "var(--color-muted)", marginTop: 6 }}>Your personal workspace is ready for future team members and shared project access.</p>
       </div>
+
+      <div style={{ marginBottom: 20 }}><NotificationPreferences /></div>
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
         {cards.map((c) => (

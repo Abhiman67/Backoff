@@ -1,11 +1,11 @@
 # Orbit — reserved mark (backup)
 
-**Status:** RESERVED for future projects. Do not use for Backoff
+**Status:** RESERVED for future projects. Do not use for VidyaSarthi
 without an explicit decision — its value is being untouched and available.
 
 **Concept:** *Orbit retry* — a seed circling back, higher each time. Calm,
 cosmic take on "every retry lands higher." Designed as the runner-up to the
-C1 Soft B during the Backoff rebrand (Oct 2026).
+C1 Soft B during the VidyaSarthi rebrand (Oct 2026).
 
 **Spec (64×64 tile):**
 - Tile: forest green `#06402B`, rounded 20px square with cut bottom-right

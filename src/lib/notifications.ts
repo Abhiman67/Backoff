@@ -17,15 +17,10 @@ const MAX_PER_KIND_PER_DAY = 5;
  * Returns the notification row, or null when dropped by the rate cap.
  */
 export async function notify(ownerId: string, input: NotifyInput) {
-  const since = new Date(Date.now() - 24 * 3600000);
-  const todayCount = await db.notification.count({
-    where: { ownerId, kind: input.kind, createdAt: { gte: since } },
-  });
-  if (todayCount >= MAX_PER_KIND_PER_DAY) {
-    const { logInfo } = await import("@/lib/observability/logger");
-    logInfo("notification.rate_limited", { ownerId, kind: input.kind });
-    return null;
-  }
+  const profile = await db.profile.findUnique({ where: { userId: ownerId }, select: { notificationPreferences: true } });
+  const preferences = profile?.notificationPreferences;
+  const category = input.kind.startsWith("classroom_") ? "classroom" : input.kind === "approval_required" ? "approvals" : "routines";
+  if (preferences && typeof preferences === "object" && !Array.isArray(preferences) && category in preferences && preferences[category] === false) return null;
   if (input.groupedKey) {
     const existing = await db.notification.findFirst({
       where: { ownerId, groupedKey: input.groupedKey, readAt: null },
@@ -37,6 +32,15 @@ export async function notify(ownerId: string, input: NotifyInput) {
         data: { title: input.title.slice(0, 200), body: (input.body ?? "").slice(0, 1000), link: input.link ?? "", createdAt: new Date() },
       });
     }
+  }
+  const since = new Date(Date.now() - 24 * 3600000);
+  const todayCount = await db.notification.count({
+    where: { ownerId, kind: input.kind, createdAt: { gte: since } },
+  });
+  if (todayCount >= MAX_PER_KIND_PER_DAY) {
+    const { logInfo } = await import("@/lib/observability/logger");
+    logInfo("notification.rate_limited", { ownerId, kind: input.kind });
+    return null;
   }
   return db.notification.create({
     data: {

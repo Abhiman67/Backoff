@@ -1,8 +1,8 @@
-# Backoff Agentic Architecture — Detailed Implementation Specification
+# VidyaSarthi Agentic Architecture — Detailed Implementation Specification
 
 ## 0. Purpose
 
-This document is the implementation contract for evolving Backoff from its current MVP into a reliable, permission-aware, multi-agent student SaaS platform.
+This document is the implementation contract for evolving VidyaSarthi from its current MVP into a reliable, permission-aware, multi-agent student SaaS platform.
 
 The coding agent must use this document as the source of truth for the architecture work. The existing application must be evolved incrementally. Do not rewrite the product from scratch and do not remove working MVP functionality.
 
@@ -163,7 +163,7 @@ S3-compatible object storage
 Monitoring and tracing
 ```
 
-MCP is an integration protocol inside the Tool Runtime. MCP is not the security boundary. All MCP and API calls must pass through Backoff authentication, scope, permission, approval, timeout and audit checks.
+MCP is an integration protocol inside the Tool Runtime. MCP is not the security boundary. All MCP and API calls must pass through VidyaSarthi authentication, scope, permission, approval, timeout and audit checks.
 
 ## 4. Architectural rules
 

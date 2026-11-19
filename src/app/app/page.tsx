@@ -25,7 +25,7 @@ export default async function AppHome() {
     db.project.findMany({ where: { ownerId: user.id }, include: { tasks: true }, orderBy: { updatedAt: "desc" }, take: 3 }),
     db.agent.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "asc" }, take: 6 }),
     db.application.findMany({ where: { ownerId: user.id }, take: 50 }),
-    db.file.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "desc" }, take: 5 }),
+    db.file.findMany({ where: { ownerId: user.id, status: { not: "deleted" } }, orderBy: { createdAt: "desc" }, take: 5 }),
     db.file.findMany({ where: { ownerId: user.id, mimeType: "text/markdown", status: { not: "deleted" } }, orderBy: { createdAt: "desc" }, take: 3 }),
     db.task.count({ where: { ownerId: user.id, status: "completed" } }),
     db.approval.findMany({ where: { ownerId: user.id, status: "pending" }, orderBy: { createdAt: "desc" }, take: 5 }),
@@ -56,14 +56,13 @@ export default async function AppHome() {
         <div>
           <p className="student-home-kicker">{greet}, {first}</p>
           <h1>What are you moving forward today? <span>✦</span></h1>
-          {openTasks.length > 0 ? <p>You have <strong>{openTasks.length} open {openTasks.length === 1 ? "task" : "tasks"}</strong>. Start with one useful next step.</p> : <p>Ask about a course, project, deadline, or career goal and Backoff will help you make a plan.</p>}
+          {openTasks.length > 0 ? <p>You have <strong>{openTasks.length} open {openTasks.length === 1 ? "task" : "tasks"}</strong>. Start with one useful next step.</p> : <p>Ask about a course, project, deadline, or career goal and VidyaSarthi will help you make a plan.</p>}
         </div>
         <div className="date-pill">{today} ▾</div>
       </div>
 
       {/* Study copilot ask box & Google Classroom integration */}
       <ClassroomDashboard
-        studentEmail={user.email}
         studyCoachId={studyCoach?.id}
         isConnected={!!classroomAccount}
       />
@@ -76,8 +75,8 @@ export default async function AppHome() {
       <section className="student-mission-card" aria-labelledby="mission-heading">
         <div>
           <span className="student-home-kicker">Your next useful step</span>
-          <h2 id="mission-heading">{overdue.length > 0 ? `Start with ${overdue[0].title}` : deadlines.length > 0 ? `Prepare for ${deadlines[0].title}` : projects.length > 0 ? `Move ${projects[0].name} forward` : notes.length > 0 ? `Continue ${notes[0].name.replace(/\.md$/, "")}` : "Tell Backoff what you want to finish"}</h2>
-          <p>{overdue.length > 0 ? "This is overdue. Backoff can help you break it into a smaller recovery plan." : deadlines.length > 0 ? "Use your course context to make a focused plan before the deadline arrives." : notes.length > 0 ? "Turn your latest note into a quiz, revision session, or next action." : "Ask about an exam, assignment, project, or internship and turn it into an actionable plan."}</p>
+          <h2 id="mission-heading">{overdue.length > 0 ? `Start with ${overdue[0].title}` : deadlines.length > 0 ? `Prepare for ${deadlines[0].title}` : projects.length > 0 ? `Move ${projects[0].name} forward` : notes.length > 0 ? `Continue ${notes[0].name.replace(/\.md$/, "")}` : "Tell VidyaSarthi what you want to finish"}</h2>
+          <p>{overdue.length > 0 ? "This is overdue. VidyaSarthi can help you break it into a smaller recovery plan." : deadlines.length > 0 ? "Use your course context to make a focused plan before the deadline arrives." : notes.length > 0 ? "Turn your latest note into a quiz, revision session, or next action." : "Ask about an exam, assignment, project, or internship and turn it into an actionable plan."}</p>
         </div>
         <Link href={studyCoach ? `/app/agents/${studyCoach.id}?q=${encodeURIComponent(overdue[0]?.title ?? deadlines[0]?.title ?? (notes[0] ? `Turn my note ${notes[0].name} into a study plan` : "Help me choose my next student priority"))}` : "/app/agents"} className="button primary-orange">Make a plan ↗</Link>
       </section>

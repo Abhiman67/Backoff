@@ -43,9 +43,25 @@ export async function tickResponsibilities(now = Date.now(), limit = 25): Promis
 
   // Keep Classroom-backed tasks current whenever the scheduler ticks.
   const { syncClassroomTasks } = await import("@/lib/integrations/classroom-sync");
+  const { logError } = await import("@/lib/observability/logger");
   const classroomAccounts = await db.integrationAccount.findMany({ where: { provider: "classroom" }, select: { ownerId: true } });
-  for (const account of classroomAccounts) {
-    try { await syncClassroomTasks(account.ownerId); } catch (err) { result.errors.push(err instanceof Error ? err.message : "Classroom sync failed"); }
+  for (let offset = 0; offset < classroomAccounts.length; offset += 3) {
+    const batch = classroomAccounts.slice(offset, offset + 3);
+    const outcomes = await Promise.allSettled(batch.map((account) => syncClassroomTasks(account.ownerId)));
+    for (const [index, outcome] of outcomes.entries()) {
+      if (outcome.status === "rejected") {
+        const ownerId = batch[index].ownerId;
+        result.errors.push("A Google Classroom sync failed.");
+        logError("classroom.scheduled_sync.failed", { ownerId });
+        await notify(ownerId, {
+          kind: "classroom_sync_failed",
+          title: "Google Classroom could not sync",
+          body: "Your saved coursework is unchanged. Reconnect Classroom or try a manual sync.",
+          link: "/app/settings/integrations",
+          groupedKey: `classroom:${ownerId}:sync-failed`,
+        });
+      }
+    }
   }
 
   const due = await db.agentResponsibility.findMany({

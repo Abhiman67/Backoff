@@ -5,6 +5,7 @@
  * tests use the mock seam (tokens starting with "mock_").
  */
 import { MIN_SCOPES } from "./scopes";
+import { z } from "zod";
 
 export type DriveFile = { id: string; name: string; mimeType: string; modifiedTime?: string };
 
@@ -48,9 +49,27 @@ export async function exchangeDriveCode(code: string): Promise<{ accessToken: st
       signal: controller.signal,
     });
     if (!res.ok) throw new Error("Token exchange failed.");
-    const data = await res.json();
-    if (!data.access_token) throw new Error("Token exchange failed.");
+    const data = z.object({ access_token: z.string(), refresh_token: z.string().optional(), expires_in: z.number().optional() }).parse(await res.json());
     return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function refreshDriveToken(refreshToken: string) {
+  const { clientId, clientSecret } = requireOAuthEnv();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error("Token refresh failed.");
+    const data = z.object({ access_token: z.string(), expires_in: z.number().optional() }).parse(await response.json());
+    return { accessToken: data.access_token, expiresIn: data.expires_in };
   } finally {
     clearTimeout(timer);
   }
@@ -101,21 +120,31 @@ export async function downloadDriveFile(accessToken: string, fileId: string): Pr
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
   try {
-    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType`, {
+    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,capabilities(canDownload)`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: controller.signal,
     });
     if (metaRes.status === 401) throw new Error("Token expired, reconnect");
-    if (!metaRes.ok) throw new Error("Drive file not found.");
-    const meta = await metaRes.json();
-    const dl = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, {
+    if (!metaRes.ok) throw new Error(metaRes.status === 403 ? "Drive denied access to this file. Connect the same Google account used in Classroom and confirm you can open the attachment." : "Drive file not found.");
+    const meta = z.object({ id: z.string(), name: z.string(), mimeType: z.string(), capabilities: z.object({ canDownload: z.boolean().optional() }).optional() }).parse(await metaRes.json());
+    if (meta.capabilities?.canDownload === false) throw new Error("Google Drive does not allow downloading this file.");
+    const exports: Record<string, { mimeType: string; extension: string }> = {
+      "application/vnd.google-apps.document": { mimeType: "text/plain", extension: ".txt" },
+      "application/vnd.google-apps.presentation": { mimeType: "application/pdf", extension: ".pdf" },
+    };
+    const exportAs = exports[meta.mimeType];
+    const url = exportAs
+      ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportAs.mimeType)}`
+      : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
+    const dl = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: controller.signal,
     });
-    if (!dl.ok) throw new Error("Drive download failed.");
+    if (!dl.ok) throw new Error(dl.status === 403 ? "Drive denied access to this file. Connect the same Google account used in Classroom and confirm you can open the attachment." : "Drive download failed.");
     const buf = new Uint8Array(await dl.arrayBuffer());
     if (buf.length > MAX_DOWNLOAD_BYTES) throw new Error("Drive file exceeds 10MB.");
-    return { bytes: buf, name: meta.name, mimeType: meta.mimeType ?? "application/octet-stream" };
+    const name = exportAs && !meta.name.toLowerCase().endsWith(exportAs.extension) ? `${meta.name}${exportAs.extension}` : meta.name;
+    return { bytes: buf, name, mimeType: exportAs?.mimeType ?? meta.mimeType ?? "application/octet-stream" };
   } finally {
     clearTimeout(timer);
   }

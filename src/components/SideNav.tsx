@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 
 export const links: [string, string, string][] = [
   ["Overview", "/app", "⌂"],
+  ["Today", "/app/today", "◷"],
   ["Learning", "/app/learning", "◒"],
   ["My agents", "/app/agents", "✦"],
   ["Projects", "/app/projects", "▣"],
@@ -40,7 +41,7 @@ export function SideNav() {
 export function MobileNav() {
   const path = usePathname();
   const items: [string, string, string][] = [
-    ["Home", "/app", "⌂"],
+    ["Today", "/app/today", "◷"],
     ["Agents", "/app/agents", "✦"],
     ["Projects", "/app/projects", "▣"],
     ["Tasks", "/app/tasks", "✓"],

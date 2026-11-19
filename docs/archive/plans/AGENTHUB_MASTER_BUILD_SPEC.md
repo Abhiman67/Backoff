@@ -1,14 +1,14 @@
-# Backoff — Master 0–100 Product & Engineering Build Specification
+# VidyaSarthi — Master 0–100 Product & Engineering Build Specification
 
 **Document status:** Implementation contract for a coding agent  
-**Product:** Backoff  
+**Product:** VidyaSarthi
 **Category:** AI operating system for student progress  
 **Primary audience:** Ambitious university students, especially technical and engineering students  
 **Target quality:** Production SaaS MVP, designed for safe expansion  
 **Billing:** Explicitly deferred  
 **Computer control:** Explicitly excluded
 
-This document is the source of truth for turning Backoff into a coherent, production-quality product. Execute it phase by phase. Do not attempt a destructive rewrite or invent behavior that is not specified here. Preserve working functionality while replacing placeholders with complete flows.
+This document is the source of truth for turning VidyaSarthi into a coherent, production-quality product. Execute it phase by phase. Do not attempt a destructive rewrite or invent behavior that is not specified here. Preserve working functionality while replacing placeholders with complete flows.
 
 Related documents:
 
@@ -21,7 +21,7 @@ Related documents:
 
 ### 1.1 Product promise
 
-Backoff turns student overwhelm into a clear, guided path forward. It combines a personal workspace, structured learning/project/career planning, and a team of specialized AI agents that keep work moving safely in the background.
+VidyaSarthi turns student overwhelm into a clear, guided path forward. It combines a personal workspace, structured learning/project/career planning, and a team of specialized AI agents that keep work moving safely in the background.
 
 ### 1.2 Core loop
 
@@ -33,7 +33,7 @@ Every major feature must strengthen this loop. Avoid isolated AI chat features t
 
 ### 1.3 Positioning
 
-Backoff is not a generic chatbot, a task list, or an automation bot. It is a student progress system with:
+VidyaSarthi is not a generic chatbot, a task list, or an automation bot. It is a student progress system with:
 
 - persistent context across courses, projects, files, goals, and career work;
 - specialized agents with clearly bounded responsibilities;
@@ -709,7 +709,7 @@ Do not:
 
 ## 22. Final product definition
 
-When complete, Backoff should feel like a focused student operating system: a calm place where a student can see what matters, understand why it matters, ask a specialized agent for help, turn that help into structured work, and trust that background assistance is visible, bounded, reversible, and grounded in their own information.
+When complete, VidyaSarthi should feel like a focused student operating system: a calm place where a student can see what matters, understand why it matters, ask a specialized agent for help, turn that help into structured work, and trust that background assistance is visible, bounded, reversible, and grounded in their own information.
 
 The competitive advantage is not “more AI.” It is persistent student context plus specialized responsibilities plus safe execution plus a coherent progress workspace.
 

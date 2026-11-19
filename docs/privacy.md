@@ -1,34 +1,29 @@
-# Privacy: Retention & Subprocessors (spec §15)
+# Data handling in the current codebase
 
-## Data we store
-Account + profile, workspace content (subjects, projects, tasks, files,
-career data), agent runs/approvals/audit events, encrypted OAuth tokens,
-notifications, usage counters.
+This page records behavior implemented in the repository. It is not a retention guarantee or a substitute for the public privacy policy. Check the relevant route and storage driver before making user-facing claims.
 
-## Retention
-- Active data: kept while the account exists.
-- Deleted files: bytes + chunks purged immediately; metadata row marked
-  `deleted` for audit, hard-purged after 30 days (see backups note below).
-- Deleted accounts: cascade removes all owned rows; object-storage keys are
-  deleted in the same request.
-- Audit events: retained 12 months for safety investigations, then purged.
-- Backups: retained 30 days; deletion requests propagate on the next cycle.
+## Data the app stores
 
-## User controls (all in-app, no support ticket needed)
-- Settings → Privacy: export all data (JSON), delete account.
-- Settings → Memory: clear conversation context per agent.
-- Settings → Integrations: disconnect revokes + deletes credentials.
-- Routines can be paused individually or all at once.
+The database stores account and profile data, workspace content, notes, files and extracted text, agent conversations and runs, approvals, audit events, integration metadata, notification preferences, and usage records. Google access and refresh tokens are encrypted before the app stores them.
 
-## Subprocessors
-- AI providers (only when keys configured): OpenAI / Google Gemini —
-  prompts + retrieved excerpts; no passwords, tokens, or file bytes beyond
-  what the task needs.
-- Email (Resend, if configured): auth + notification mail only.
-- Hosting/storage: where you deploy (Vercel/filesystem/S3-compatible).
-- No training on private notes without explicit consent.
+Configured AI providers receive the prompts and selected context sent by the app. The app does not control a provider's retention or training settings. Review the provider configuration and terms before production use.
 
-## What we never do
-Log or analyze full message bodies, file bytes, or tokens by default;
-send or publish anything without an approval record; use student data
-for model training.
+## File deletion
+
+Deleting a file removes its stored bytes through the configured storage driver, removes its chunks, clears extracted text, and marks the database row as `deleted`. The repository has no scheduled hard-delete job for file metadata.
+
+The current S3-compatible storage code only writes remote objects. Its read and delete methods use local storage. Do not configure it for production file storage until the driver supports and verifies all three operations.
+
+## Account deletion
+
+The account deletion route attempts to delete each file object through the configured storage driver, then deletes the user row. Database relations cascade according to `prisma/schema.prisma`. Audit events use `onDelete: SetNull`, so their records can remain without an owner ID. The repository does not define an audit-event retention schedule.
+
+## Integration disconnect
+
+Disconnecting an integration removes VidyaSarthi's saved token record. The current disconnect route does not call Google's token revocation endpoint.
+
+## Backups and external services
+
+The repository does not configure a production backup schedule or a backup retention period. Set those policies with the database and storage providers, then run restore drills. See [`backups.md`](backups.md).
+
+Email sends require `RESEND_API_KEY` and `EMAIL_FROM`. The current code sends password-reset and workspace-invitation emails. Google Classroom, Drive, and Calendar use OAuth scopes documented in the root README.

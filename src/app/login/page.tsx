@@ -29,7 +29,7 @@ export default function LoginPage() {
       <div className="login-card reveal in">
         <div className="eyebrow">Welcome back</div>
         <h2>Pick up where you left off.</h2>
-        <p>Sign in to your Backoff workspace and get your team moving.</p>
+        <p>Sign in to your VidyaSarthi workspace and get your team moving.</p>
         <form onSubmit={onSubmit}>
           <label htmlFor="login-email">Email address</label>
           <input id="login-email" type="email" placeholder="you@university.edu" value={email} onChange={(e) => setEmail(e.target.value)} />

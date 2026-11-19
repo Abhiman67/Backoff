@@ -7,12 +7,17 @@ import { enqueue } from "@/lib/jobs/queue";
  * Scheduler entrypoint. Gated by CRON_SECRET (never session auth — external
  * schedulers and the Redis worker have no user session).
  */
-export async function POST(req: Request) {
+async function tick(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return apiError("SCHEDULER_NOT_CONFIGURED", "Set CRON_SECRET to enable scheduled ticks.", 501);
-  const provided = req.headers.get("x-cron-secret") ?? new URL(req.url).searchParams.get("secret");
+  const authorization = req.headers.get("authorization");
+  const provided = req.headers.get("x-cron-secret") ?? (authorization?.startsWith("Bearer ") ? authorization.slice(7) : null);
   if (provided !== secret) return apiError("UNAUTHORIZED", "Invalid scheduler secret.", 401);
   const key = `responsibility.tick:${new Date().toISOString().slice(0, 16)}`;
   const result = await enqueue("responsibility.tick", {}, { idempotencyKey: key, maxRetries: 1 });
   return NextResponse.json({ ok: true, job: result }, { headers: { "Cache-Control": "no-store" } });
 }
+
+// Vercel Cron invokes scheduled routes with GET; POST remains for external schedulers.
+export const GET = tick;
+export const POST = tick;

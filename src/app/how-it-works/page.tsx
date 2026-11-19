@@ -3,14 +3,14 @@ import Link from "next/link";
 import PublicChrome from "@/components/PublicChrome";
 
 export const metadata: Metadata = {
-  title: "How it works — Goals in, momentum out | Backoff",
-  description: "Set up in 2 minutes: tell Backoff your goals, pick your AI team, backoff daily progress with approvals. Tour the workspace.",
+  title: "How it works — Goals in, momentum out | VidyaSarthi",
+  description: "Set up in 2 minutes: tell VidyaSarthi your goals, pick your AI team, and build daily momentum with approvals. Tour the workspace.",
 };
 
 const steps = [
   { n: "01 / Set up", h: "Tell us where you want to go.", p: "Semester, subjects, skills, career target and weekly hours. Import notes (PDF, TXT, MD) in one click.", mock: "Sem 6 · DBMS, OS · 4h/day · Frontend intern", time: "~2 min" },
   { n: "02 / Build your team", h: "Choose the right agents.", p: "Start with any 2 free. Scope which files and projects each agent may use. Swap anytime.", mock: "✦ Study Coach ✓   ↗ Career Scout ✓", time: "~1 min" },
-  { n: "03 / Make progress", h: "Let the work backoff.", p: "Daily focus list, streaks, milestones and approval cards. Nothing external sends without you.", mock: "Today: 3 tasks · 45 min · 1 approval", time: "Daily" },
+  { n: "03 / Make progress", h: "Turn small steps into progress.", p: "Daily focus list, streaks, milestones and approval cards. Nothing external sends without you.", mock: "Today: 3 tasks · 45 min · 1 approval", time: "Daily" },
 ];
 
 export default function HowItWorks() {
@@ -20,7 +20,7 @@ export default function HowItWorks() {
         <div>
           <div className="kicker">How it works</div>
           <h1 data-split style={{ fontSize: "clamp(40px,6vw,68px)", letterSpacing: "-0.07em", lineHeight: 0.98, margin: "0 0 16px" }}>Your goals in.<br />Momentum out.</h1>
-          <p className="lead">Three steps, about three minutes of setup. Then Backoff fits into how you already study, build and apply.</p>
+          <p className="lead">Three steps, about three minutes of setup. Then VidyaSarthi fits into how you already study, build and apply.</p>
           <div className="actions">
             <Link className="button primary-orange shine" data-magnetic href="/signup">Start step 1 — free ↗</Link>
             <Link className="button secondary" href="/agents">Meet the agents</Link>

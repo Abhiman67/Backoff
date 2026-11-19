@@ -2,26 +2,26 @@ import { db } from "@/lib/db";
 import { MIN_SCOPES } from "./scopes";
 import { encryptToken } from "./crypto";
 
-export async function connectProvider(ownerId: string, provider: string, opts: { scopes?: string[]; accessToken?: string; refreshToken?: string; expiresInSec?: number } = {}) {
+export async function connectProvider(ownerId: string, provider: string, opts: { scopes?: string[]; accessToken: string; refreshToken?: string; expiresInSec?: number }) {
   const p = provider.toLowerCase();
   if (!MIN_SCOPES[p]) throw new Error("Unknown provider");
+  if (!opts.accessToken.trim()) throw new Error("A verified provider access token is required.");
   const scopes = Array.from(new Set([...MIN_SCOPES[p], ...(opts.scopes ?? [])]));
-  // Mock OAuth exchange: in production this validates an OAuth code with the provider.
-  const accessToken = opts.accessToken ?? `mock_${p}_${Date.now()}`;
   return db.integrationAccount.upsert({
     where: { ownerId_provider: { ownerId, provider: p } },
     create: {
       ownerId,
       provider: p,
       scopes,
-      accessTokenEncrypted: encryptToken(accessToken),
+      accessTokenEncrypted: encryptToken(opts.accessToken),
       refreshTokenEncrypted: opts.refreshToken ? encryptToken(opts.refreshToken) : null,
       expiresAt: opts.expiresInSec ? new Date(Date.now() + opts.expiresInSec * 1000) : null,
     },
     update: {
       scopes,
-      accessTokenEncrypted: encryptToken(accessToken),
+      accessTokenEncrypted: encryptToken(opts.accessToken),
       ...(opts.refreshToken ? { refreshTokenEncrypted: encryptToken(opts.refreshToken) } : {}),
+      ...(opts.expiresInSec ? { expiresAt: new Date(Date.now() + opts.expiresInSec * 1000) } : {}),
     },
   });
 }

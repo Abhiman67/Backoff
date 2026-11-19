@@ -40,6 +40,8 @@ model User {
   milestones          Milestone[]
   projectRisks        ProjectRisk[]
   careerGoals         CareerGoal[]
+  noteLinks           NoteLink[]
+  noteRevisions       NoteRevision[]
   responsibilities    AgentResponsibility[]
   notifications       Notification[]
   masteryEvidence     MasteryEvidence[]
@@ -56,6 +58,7 @@ model Profile {
   subjects       Json     @default("[]")
   skills         Json     @default("[]")
   interests      Json     @default("[]")
+  notificationPreferences Json @default("{\"classroom\":true,\"routines\":true,\"approvals\":true}")
   studyHours     Int?
   careerTarget   String?
   onboardingDone Boolean  @default(false)
@@ -129,6 +132,7 @@ model Project {
   agentRuns      AgentRun[]
   milestones     Milestone[]
   risks          ProjectRisk[]
+  files          File[]
 
   @@index([ownerId])
 }
@@ -172,12 +176,54 @@ model File {
   textContent   String      @default("")
   storageKey    String?
   failureReason String?
+  sourceProvider String?
+  sourceExternalId String?
   subjectId     String?
   subject       Subject?    @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  projectId     String?
+  project       Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  careerGoalId  String?
+  careerGoal    CareerGoal? @relation(fields: [careerGoalId], references: [id], onDelete: SetNull)
+  folder        String      @default("Inbox")
+  tags          Json        @default("[]")
   createdAt     DateTime    @default(now())
   chunks        FileChunk[]
+  outgoingLinks NoteLink[]  @relation("NoteLinkFrom")
+  incomingLinks NoteLink[]  @relation("NoteLinkTo")
+  revisions     NoteRevision[]
 
   @@index([ownerId, status])
+  @@unique([ownerId, sourceProvider, sourceExternalId])
+  @@index([ownerId, projectId])
+  @@index([ownerId, careerGoalId])
+}
+
+model NoteLink {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  fromId    String
+  from      File     @relation("NoteLinkFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String
+  to        File     @relation("NoteLinkTo", fields: [toId], references: [id], onDelete: Cascade)
+  label     String   @default("")
+  createdAt DateTime @default(now())
+
+  @@unique([fromId, toId])
+  @@index([ownerId, toId])
+}
+
+model NoteRevision {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  fileId    String
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([ownerId, fileId, createdAt])
 }
 
 model FileChunk {
@@ -333,6 +379,7 @@ model CareerGoal {
   notes      String    @default("")
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  files      File[]
 
   @@index([ownerId, status])
 }

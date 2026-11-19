@@ -3,7 +3,7 @@ import Link from "next/link";
 import PublicChrome from "@/components/PublicChrome";
 
 export const metadata: Metadata = {
-  title: "Pricing — Start free, grow as you go | Backoff",
+  title: "Pricing — Start free, grow as you go | VidyaSarthi",
   description: "Starter free forever (2 agents), Student Pro ₹299/mo (unlimited agents + projects + career), Campus custom. Cancel anytime.",
 };
 

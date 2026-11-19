@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" role="img" aria-label="Backoff logo options">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" role="img" aria-label="VidyaSarthi logo options">
   <rect width="900" height="360" fill="#F7F5F0"/>
   <style>
     .t { font-family: Inter, system-ui, sans-serif; font-size: 22px; font-weight: 800; fill: #17202A; }
@@ -20,7 +20,7 @@
     <circle cx="450" cy="180" r="14" fill="#FFD34D"/>
     <circle cx="512" cy="180" r="14" fill="#FFD34D"/>
     <rect x="392" y="216" width="130" height="10" rx="5" fill="#FFD34D" opacity="0.45"/>
-    <text x="330" y="300" class="t">B · Backoff steps</text>
+    <text x="330" y="300" class="t">B · VidyaSarthi steps</text>
     <text x="330" y="324" class="s">Growing gaps = exponential backoff.</text>
   </g>
   <!-- C -->

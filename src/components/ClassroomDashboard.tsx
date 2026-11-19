@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ClassroomCourse, mockClassroomCourses } from "@/lib/integrations/classroom";
+import { ClassroomCourse, ClassroomMaterial } from "@/lib/integrations/classroom";
 
 interface ClassroomDashboardProps {
-  studentEmail: string;
   defaultCourses?: ClassroomCourse[];
   agentsCount?: number;
   studyCoachId?: string;
@@ -14,7 +13,6 @@ interface ClassroomDashboardProps {
 }
 
 export function ClassroomDashboard({
-  studentEmail,
   defaultCourses,
   studyCoachId,
   isConnected = false,
@@ -28,30 +26,86 @@ export function ClassroomDashboard({
   const [isDemo, setIsDemo] = useState(!isConnected);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState("");
+  const [syncMessage, setSyncMessage] = useState("");
+  const [materials, setMaterials] = useState<ClassroomMaterial[]>([]);
+  const [materialsMessage, setMaterialsMessage] = useState("");
+  const [importingFile, setImportingFile] = useState("");
+  const [importedFiles, setImportedFiles] = useState<string[]>([]);
 
   useEffect(() => {
     if (!connectedState || defaultCourses) return;
     let cancelled = false;
-    void fetch("/api/integrations/classroom/courses")
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Could not sync courses.");
-        return res.json() as Promise<{ courses?: ClassroomCourse[]; demo?: boolean }>;
-      })
-      .then((data) => {
+    async function loadCoursesAndTasks() {
+      setIsSyncing(true);
+      setError("");
+      try {
+        const coursesResponse = await fetch("/api/integrations/classroom/courses", { cache: "no-store" });
+        const coursesData = await coursesResponse.json();
+        if (!coursesResponse.ok) throw new Error(coursesData.error?.message ?? "Could not sync courses.");
+        const data = coursesData as { courses?: ClassroomCourse[]; demo?: boolean };
         if (!cancelled) {
           setCourses(data.courses ?? []);
           setIsDemo(Boolean(data.demo));
-          void fetch("/api/integrations/classroom/sync", { method: "POST" });
         }
-      })
-      .catch(() => {
-        if (!cancelled) setError("Courses could not be synced. Try reconnecting Classroom.");
-      })
-      .finally(() => {
+        const syncResponse = await fetch("/api/integrations/classroom/sync", { method: "POST" });
+        const syncData = await syncResponse.json();
+        if (!syncResponse.ok) throw new Error(syncData.error?.message ?? "Coursework could not be added to your plan.");
+        if (!cancelled) setSyncMessage(`${syncData.synced ?? 0} coursework items synced to your plan.`);
+        const materialsResponse = await fetch("/api/integrations/classroom/materials", { cache: "no-store" });
+        const materialsData = await materialsResponse.json();
+        if (!materialsResponse.ok) {
+          if (!cancelled) setMaterialsMessage(materialsData.error?.message ?? "Course materials could not be loaded.");
+        } else if (!cancelled) {
+          setMaterials(materialsData.materials ?? []);
+          setImportedFiles(materialsData.importedDriveFileIds ?? []);
+          setMaterialsMessage("");
+        }
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Courses could not be synced. Try reconnecting Classroom.");
+      } finally {
         if (!cancelled) setIsSyncing(false);
-      });
+      }
+    }
+    void loadCoursesAndTasks();
     return () => { cancelled = true; };
   }, [connectedState, defaultCourses]);
+
+  async function importClassroomFile(driveFileId: string) {
+    if (importingFile) return;
+    setImportingFile(driveFileId);
+    setMaterialsMessage("");
+    try {
+      const response = await fetch("/api/integrations/classroom/import", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message ?? "Could not import this Classroom file.");
+      setImportedFiles((current) => current.includes(driveFileId) ? current : [...current, driveFileId]);
+      setMaterialsMessage(data.alreadyImported ? "This file is already in Files & notes." : "File imported. VidyaSarthi is preparing it for your notes and agents.");
+    } catch (cause) {
+      setMaterialsMessage(cause instanceof Error ? cause.message : "Could not import this Classroom file.");
+    } finally {
+      setImportingFile("");
+    }
+  }
+
+  async function handleSyncTasks() {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setError("");
+    setSyncMessage("");
+    try {
+      const response = await fetch("/api/integrations/classroom/sync", { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message ?? "Coursework could not be synced.");
+      setSyncMessage(`${data.synced ?? 0} coursework items synced to your plan. ${data.notified ?? 0} new notifications.`);
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Coursework could not be synced. Try again.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
 
   const promptChips = [
     { label: "What do I have due this week?", glyph: "✓" },
@@ -76,17 +130,13 @@ export function ClassroomDashboard({
     setIsConnecting(true);
     setError("");
     try {
-      const res = await fetch("/api/integrations/classroom", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      if (!res.ok) throw new Error("Could not connect Classroom.");
-      setConnectedState(true);
-      setCourses(mockClassroomCourses());
-      setIsDemo(true);
-    } catch {
-      setError("Classroom connection failed. Try again from Settings → Integrations.");
+      const res = await fetch("/api/integrations/classroom/connect", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message ?? "Google Classroom OAuth is not configured yet.");
+      if (typeof data.authUrl !== "string") throw new Error("Google did not provide an authorization link.");
+      window.location.assign(data.authUrl);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Classroom connection failed. Try again from Settings → Integrations.");
     } finally {
       setIsConnecting(false);
     }
@@ -127,6 +177,7 @@ export function ClassroomDashboard({
       {error && (
         <p role="alert" style={{ fontSize: 13, color: "#c0392b", margin: "0 0 12px" }}>{error}</p>
       )}
+      {syncMessage && <p role="status" aria-live="polite" style={{ fontSize: 13, color: "var(--color-muted)", margin: "0 0 12px" }}>{syncMessage}</p>}
 
       {/* 1. Suggested starters */}
       <div className="grok-chips-row">
@@ -147,13 +198,13 @@ export function ClassroomDashboard({
       <section className="grok-omnibar-wrapper">
         <form onSubmit={handleSend} className="grok-omnibar">
           <div className="grok-omnibar-input-row">
-            <label className="sr-only" htmlFor="copilot-ask">Ask Backoff</label>
+            <label className="sr-only" htmlFor="copilot-ask">Ask VidyaSarthi</label>
             <input
               id="copilot-ask"
               type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Tell Backoff what you&apos;re trying to move forward…"
+              placeholder="Tell VidyaSarthi what you&apos;re trying to move forward…"
               className="grok-omnibar-input"
             />
             <div className="grok-omnibar-actions">
@@ -175,8 +226,8 @@ export function ClassroomDashboard({
                 type="submit"
                 disabled={!prompt.trim()}
                 className={`grok-send-btn ${prompt.trim() ? "active" : ""}`}
-                title="Ask Backoff"
-                aria-label="Ask Backoff"
+                title="Ask VidyaSarthi"
+                aria-label="Ask VidyaSarthi"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="19" x2="12" y2="5" />
@@ -212,7 +263,7 @@ export function ClassroomDashboard({
               <div>
                 <h2>Connect Google Classroom</h2>
                 <p className="grok-section-sub">
-                  Bring your college courses and deadlines into Backoff with read-only access.
+                  Bring your college courses and deadlines into VidyaSarthi with read-only access.
                 </p>
               </div>
             </div>
@@ -240,12 +291,12 @@ export function ClassroomDashboard({
               <div>
                 <h2>Your courses</h2>
                 <p className="grok-section-sub">
-                  Synced with <strong>{studentEmail || "student@university.edu"}</strong> · <span className="tag" style={{ fontSize: 10 }}>{isSyncing ? "Syncing…" : isDemo ? "Preview courses" : "Live read-only sync"}</span>
+                  Connection active · <span className="tag" style={{ fontSize: 10 }}>{isSyncing ? "Syncing…" : isDemo ? "Preview courses" : "Live read-only sync"}</span>
                 </p>
               </div>
             </div>
             <div className="grok-classroom-header-actions">
-              <button type="button" className="grok-sync-btn" onClick={() => { setIsSyncing(true); void fetch("/api/integrations/classroom/sync", { method: "POST" }).finally(() => setIsSyncing(false)); }}>{isSyncing ? "Syncing…" : "Sync tasks"}</button>
+              <button type="button" className="grok-sync-btn" onClick={() => void handleSyncTasks()} disabled={isSyncing}>{isSyncing ? "Syncing…" : "Sync tasks"}</button>
               <Link href="/app/settings/integrations" className="grok-view-all">
                 Manage connection →
               </Link>
@@ -256,7 +307,7 @@ export function ClassroomDashboard({
           </div>
 
           <div className="grok-courses-grid">
-            {courses.map((course) => (
+            {courses.slice(0, 8).map((course) => (
               <div key={course.id} className={`grok-course-card color-${course.colorScheme}`}>
                 <div className="course-card-top">
                   <div>
@@ -304,6 +355,36 @@ export function ClassroomDashboard({
                 </div>
               </div>
             ))}
+          </div>
+          {courses.length === 0 && !isSyncing && !error && <p style={{ color: "var(--color-muted)", fontSize: 13 }}>No active courses found for the connected Google account. Make sure it is enrolled in a Classroom course.</p>}
+          {courses.length > 8 && <p style={{ color: "var(--color-muted)", fontSize: 12 }}>Showing 8 of {courses.length} courses. Tasks from all courses are included in your planner.</p>}
+          <div className="classroom-materials-block">
+            <div className="classroom-materials-heading">
+              <div><h3>Course materials</h3><p>Files, links, videos, and forms shared in your courses.</p></div>
+              <button type="button" className="grok-sync-btn" disabled={isSyncing} onClick={async () => {
+                setMaterialsMessage("");
+                try {
+                  const response = await fetch("/api/integrations/classroom/materials", { cache: "no-store" });
+                  const data = await response.json();
+                  if (!response.ok) throw new Error(data.error?.message ?? "Materials could not be refreshed.");
+                  setMaterials(data.materials ?? []);
+                  setImportedFiles(data.importedDriveFileIds ?? []);
+                } catch (cause) { setMaterialsMessage(cause instanceof Error ? cause.message : "Materials could not be refreshed."); }
+              }}>Refresh materials</button>
+            </div>
+            {materialsMessage && <p role="status" aria-live="polite" className="classroom-materials-message">{materialsMessage}{(materialsMessage.includes("Reconnect Google Classroom") || materialsMessage.includes("Connect Google Drive") || materialsMessage.includes("Reconnect Drive")) && <> <Link href="/app/settings/integrations">Manage connections →</Link></>}</p>}
+            {materials.length === 0 && !materialsMessage && <p className="classroom-materials-empty">No course materials found yet.</p>}
+            {materials.length > 0 && <ul className="classroom-materials-list">{materials.map((material) => {
+              const imported = material.driveFileId && importedFiles.includes(material.driveFileId);
+              const driveFileId = material.driveFileId;
+              return <li key={`${material.courseId}:${material.id}`} className="classroom-material-row">
+                <div className="classroom-material-copy"><span className="classroom-material-kind">{material.kind}</span><strong>{material.title}</strong><span>{material.courseName} · {material.parentTitle}</span></div>
+                <div className="classroom-material-actions">
+                  {material.url && <a href={material.url} target="_blank" rel="noreferrer" className="course-action-link">Open in Google ↗</a>}
+                  {driveFileId && <button type="button" className="grok-sync-btn" disabled={Boolean(importingFile) || Boolean(imported)} onClick={() => void importClassroomFile(driveFileId)}>{importingFile === driveFileId ? "Importing…" : imported ? "Imported" : "Import to VidyaSarthi"}</button>}
+                </div>
+              </li>;
+            })}</ul>}
           </div>
         </section>
       )}

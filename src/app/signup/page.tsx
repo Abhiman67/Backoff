@@ -41,7 +41,7 @@ export default function SignupPage() {
     <main className="wrap" style={{ padding: "60px 0" }}>
       <ScrollMotion />
       <div className="login-card reveal in">
-        <div className="eyebrow">Join Backoff</div>
+        <div className="eyebrow">Join VidyaSarthi</div>
         <h2>Build your team.</h2>
         <p>Create your workspace and meet your AI team.</p>
         <form onSubmit={onSubmit}>

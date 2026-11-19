@@ -6,7 +6,7 @@ type Note = { id: string; name: string; folder?: string; tags?: string[] };
 export default function KnowledgeFoldersPage() {
   const [notes, setNotes] = useState<Note[]>([]); const [error, setError] = useState("");
   const [selected, setSelected] = useState(""); const [folder, setFolder] = useState(""); const [saved, setSaved] = useState(false);
-  useEffect(() => { fetch("/api/notes").then(async (r) => { if (!r.ok) throw new Error("Could not load folders."); setNotes((await r.json()).notes ?? []); }).catch((e) => setError(e instanceof Error ? e.message : "Could not load folders.")); }, []);
+  useEffect(() => { fetch("/api/notes?take=500").then(async (r) => { if (!r.ok) throw new Error("Could not load folders."); setNotes((await r.json()).notes ?? []); }).catch((e) => setError(e instanceof Error ? e.message : "Could not load folders.")); }, []);
   const folders = useMemo(() => Array.from(new Set(notes.map((n) => n.folder || "Inbox"))), [notes]);
   const tags = useMemo(() => Array.from(new Set(notes.flatMap((n) => n.tags ?? []))), [notes]);
   const active = notes.find((n) => n.id === selected);

@@ -1,10 +1,11 @@
 {
-  "name": "backoff",
+  "name": "vidyasarthi",
   "version": "1.0.0",
-  "description": "Backoff - personal AI team for students",
+  "description": "VidyaSarthi - personal AI team for students",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "build:vercel": "npm run db:pg-sync && prisma generate --schema prisma/postgres/schema.prisma && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -14,9 +15,11 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "bun prisma/seed.ts",
-    "db:pg-sync": "sed 's/provider = \"sqlite\"/provider = \"postgresql\"/' prisma/schema.prisma > prisma/schema.postgres.prisma",
+    "db:pg-sync": "sed 's/provider = \"sqlite\"/provider = \"postgresql\"/' prisma/schema.prisma > prisma/schema.postgres.prisma && mkdir -p prisma/postgres && sed 's/provider = \"sqlite\"/provider = \"postgresql\"/' prisma/schema.prisma > prisma/postgres/schema.prisma",
+    "db:pg-deploy": "npm run db:pg-sync && prisma migrate deploy --schema prisma/postgres/schema.prisma",
+    "db:pg-bootstrap": "npm run db:pg-deploy",
     "worker": "bun scripts/worker.ts",
-    "db:postgres": "docker compose up -d db redis && prisma migrate dev"
+    "db:postgres": "docker compose up -d db redis && env DATABASE_URL=postgresql://backoff:backoff@localhost:5432/backoff npm run db:pg-deploy"
   },
   "keywords": [],
   "author": "Abhishek (Abhiman67)",

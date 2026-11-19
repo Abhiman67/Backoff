@@ -1,14 +1,16 @@
-# Backoff Design Specification
+# VidyaSarthi Design Specification
 
-**Product:** Backoff  
+**Product:** VidyaSarthi
 **Version:** 1.0  
 **Audience:** Students, student teams, colleges and campus communities  
 **Product type:** Multi-agent AI SaaS platform  
 **Primary experience:** A personal AI team for studying, projects, careers and student productivity
 
+This document records product and visual intent. It is not a release plan or a checklist of shipped features. Use the root README for current implementation and `docs/launch-checklist.md` for production work.
+
 ## 1. Product vision
 
-Backoff is a student operating system powered by specialized AI agents. Instead of asking one generic chatbot to do everything, a student creates a focused team: Study Coach, Project Guide, Career Scout, Code Mentor, Writing Buddy and Interview Coach.
+VidyaSarthi is a student operating system powered by specialized AI agents. Instead of asking one generic chatbot to do everything, a student creates a focused team: Study Coach, Project Guide, Career Scout, Code Mentor, Writing Buddy and Interview Coach.
 
 The product should feel like a calm, intelligent workspace—not like an intimidating developer tool. It should turn vague student goals into visible next actions while preserving student control over generated work and external actions.
 
@@ -60,7 +62,7 @@ Landing page
 ### Authenticated application
 
 ```text
-Backoff workspace
+VidyaSarthi workspace
 ├── Overview
 ├── My agents
 │   ├── Agent directory
@@ -87,7 +89,7 @@ Backoff workspace
 
 ### Personality
 
-Warm, confident, focused, optimistic and slightly editorial. Backoff should feel more like a thoughtful studio than a generic AI dashboard.
+Warm, confident, focused, optimistic and slightly editorial. VidyaSarthi should feel more like a thoughtful studio than a generic AI dashboard.
 
 ### Layout style
 
@@ -171,7 +173,7 @@ font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
 
 #### Header
 
-- Backoff logo and wordmark on the left
+- VidyaSarthi logo and wordmark on the left
 - Navigation: Agents, Dashboard preview, How it works, Pricing
 - Sign in button on the right
 - Sticky on desktop after scrolling
@@ -185,7 +187,7 @@ Headline:
 
 Supporting text:
 
-> Backoff gives every student a personal team of AI agents to study smarter, build better projects, and find their next opportunity.
+> VidyaSarthi gives every student a personal team of AI agents to study smarter, build better projects, and find their next opportunity.
 
 Primary action: **Build your team**  
 Secondary action: **Meet the agents**
@@ -209,9 +211,9 @@ Each card contains an icon, title, one-sentence description and category color.
 
 Three steps:
 
-1. Tell Backoff where you want to go.
+1. Tell VidyaSarthi where you want to go.
 2. Choose and configure your AI team.
-3. Let the work backoff through daily progress.
+3. Build momentum through daily progress.
 
 #### Student proof
 

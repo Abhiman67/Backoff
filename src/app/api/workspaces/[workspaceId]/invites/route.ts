@@ -15,7 +15,7 @@ export const POST = handleApi<{ workspaceId: string }>(async (req, { userId }, p
   await db.workspaceInvite.deleteMany({ where: { workspaceId, email, acceptedAt: null } });
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { name: true } });
   await db.workspaceInvite.create({ data: { workspaceId, email, role: parsed.data.role, tokenHash: hash(token), expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } });
-  const sent = await sendWorkspaceInviteEmail(email, token, new URL(req.url).origin, workspace?.name ?? "Backoff workspace");
+  const sent = await sendWorkspaceInviteEmail(email, token, new URL(req.url).origin, workspace?.name ?? "VidyaSarthi workspace");
   if (!sent && process.env.NODE_ENV === "production") {
     await db.workspaceInvite.deleteMany({ where: { workspaceId, email, tokenHash: hash(token) } });
     throw new HttpError("EMAIL_NOT_CONFIGURED", 503, "Email delivery is not configured");

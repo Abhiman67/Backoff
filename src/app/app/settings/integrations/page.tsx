@@ -6,7 +6,7 @@ export default function IntegrationsSettingsPage() {
       <div className="page-head">
         <div>
           <h1>Connected integrations</h1>
-          <p>Read-only by default. Drafts never send without approval.</p>
+          <p>Classroom reads your courses, assignments, and shared material links. Connect Drive separately to import supported attachment contents into Files &amp; notes. Calendar sync is read-only; agent tool actions for GitHub, Notion, and Gmail are previews.</p>
         </div>
       </div>
       <IntegrationsPanel />

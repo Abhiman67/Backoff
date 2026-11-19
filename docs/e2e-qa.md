@@ -1,36 +1,40 @@
-# Backoff E2E QA Script (Milestone 4 §7.3)
+# Manual release checks
 
-No browser framework is configured yet, so this journey is manual until
-Milestone 10 staging validation. API-level coverage lives in
-`src/lib/agents/workflow.integration.test.ts` (`bun run test:integration`).
+No browser automation framework is configured in this repository. Use this checklist in a staging deployment before a release. Record the environment, commit, tester, and result for each section.
 
-## Setup
+## Account and workspace
 
-1. `cp .env.example .env` (SQLite default) → `bun install`
-2. `bunx prisma db push` → `bun run dev` → open http://localhost:3000
+1. Create an account and complete onboarding.
+2. Open the workspace overview and navigate to Today, Learning, Agents, Projects, Tasks, Knowledge, Files, Career, Approvals, and Settings.
+3. Open a page while signed out. Confirm the app sends you to sign in.
+4. Create a task, edit it, complete it, and confirm the change remains after refresh.
 
-## Journey (record pass/fail per step)
+## Notes and files
 
-1. **Signup** — create account → lands on onboarding.
-2. **Onboarding** — complete 4 steps → `/app` dashboard with greeting.
-3. **Agent workspace** — open Study Coach → empty chat + suggested prompts.
-4. **Start goal** — RunPanel: enter "Create a task to revise databases
-   tomorrow" → Start → status becomes Waiting for approval.
-5. **Approval appears** — approval card shows title, action `create_task`,
-   risk, expiry, Approve/Deny.
-6. **Approve** — click Approve → success message → run completes.
-7. **Task appears** — `/app/tasks` shows exactly one "revise databases" task.
-8. **Run completes** — RunPanel shows Completed with 3 steps; refresh keeps
-   Completed (no duplicates).
-9. **Upload file** — `/app/files`: upload TXT notes → status becomes ready.
-10. **Grounded question** — ask about the notes → citation chip appears.
-11. **Usage/audit** — `/app/usage` counts the run; approvals page shows the
-    decided approval.
-12. **Cancel** — start a second run → Cancel → status Cancelled.
-13. **Retry** — (via API) resume a failed run → completes without duplicates.
-14. **Unauthorized** — logged-out `/app` redirects to `/login`; user B
-    cannot open user A's run (`RUN_NOT_FOUND`).
+1. Create a note, add a folder and tags, and link two notes with `[[wikilinks]]`.
+2. Open backlinks and the note graph. Confirm both show the saved relationship.
+3. Export the notes backup, then import it into a separate test account.
+4. Upload a supported PDF, TXT, Markdown, or DOCX file. Confirm extraction completes and study actions use that file.
+5. Delete the test file and confirm it disappears from the active file list.
 
-## Sign-off
+## Agents and approvals
 
-Record: date, environment, commit, tester, per-step result, failures.
+1. Ask an agent to create a plan from a course or project prompt.
+2. Confirm the run shows its status and steps.
+3. If the agent proposes an approval-gated action, review and deny it. Start another run and approve a safe action.
+4. Refresh the page. Confirm run and approval states persist and no duplicate tasks appear.
+
+## Google integrations
+
+Run these checks only with a Google test account that has access to the configured APIs and Classroom courses.
+
+1. Connect Google Classroom and confirm that courses and published assignments load.
+2. Sync tasks. Confirm due dates and submitted state match Classroom.
+3. Reconnect Classroom with the course-materials read-only scope. Confirm published links and attachments appear.
+4. Open a material link. Connect Google Drive separately and import a supported attachment.
+5. Confirm the imported file appears once in Files & notes, then retry the import and confirm it is not duplicated.
+6. Connect Calendar and confirm read-only events appear in the student workspace.
+
+## Release record
+
+Record the date, environment, commit, tester, per-section result, failures, and follow-up issues. Do not mark a check complete based only on a successful build or API typecheck.

@@ -34,8 +34,9 @@ export function deriveMastery(evidences: Evidence[]): MasteryState {
 export type PlanSession = { title: string; dayOffset: number; durationMin: number; topicIds: string[] };
 
 /**
- * Deterministic revision planner: weakest topics first, spread evenly across
- * available days until the exam (default 7). Pure and testable.
+ * Deterministic spaced-revision planner: weakest topics receive earlier and
+ * more frequent recall sessions, while confident topics still get a later
+ * check. Offsets are bounded by the exam window.
  */
 export function planRevision(topicIds: string[], masteryById: Record<string, MasteryState>, daysAvailable: number, minutesPerDay = 45): PlanSession[] {
   if (topicIds.length === 0 || daysAvailable < 1) return [];
@@ -43,12 +44,21 @@ export function planRevision(topicIds: string[], masteryById: Record<string, Mas
   const ordered = [...topicIds].sort((a, b) => (weight[masteryById[b] ?? "unknown"] ?? 0) - (weight[masteryById[a] ?? "unknown"] ?? 0));
   const days = Math.min(daysAvailable, 14);
   const sessions: PlanSession[] = [];
-  ordered.forEach((id, i) => {
-    const day = i % days;
-    const existing = sessions.find((s) => s.dayOffset === day);
-    if (existing) existing.topicIds.push(id);
-    else sessions.push({ title: `Revision day ${day + 1}`, dayOffset: day, durationMin: minutesPerDay, topicIds: [id] });
+  const intervals: Record<MasteryState, number[]> = {
+    unknown: [0, 1, 3, 7, 14],
+    needs_review: [0, 1, 3, 7, 14],
+    learning: [0, 2, 5, 10],
+    practiced: [0, 3, 7],
+    confident: [0, 7],
+  };
+
+  for (const id of ordered) {
+    const mastery = masteryById[id] ?? "unknown";
+    for (const day of intervals[mastery].filter((offset) => offset < days)) {
+      const existing = sessions.find((session) => session.dayOffset === day);
+      if (existing) existing.topicIds.push(id);
+      else sessions.push({ title: `Recall & review · day ${day + 1}`, dayOffset: day, durationMin: minutesPerDay, topicIds: [id] });
+    }
   }
-  );
   return sessions.sort((a, b) => a.dayOffset - b.dayOffset);
 }

@@ -58,7 +58,7 @@ export default function MemorySettings() {
       </div>
 
       <div className="panel" style={{ marginBottom: 20 }}>
-        <h3 style={{ fontSize: 14, margin: "0 0 6px" }}>How Backoff memory works</h3>
+        <h3 style={{ fontSize: 14, margin: "0 0 6px" }}>How VidyaSarthi memory works</h3>
         <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
           Agents access your active project milestones, uploaded lecture notes, and recent conversation history to provide accurate, grounded assistance. Custom instructions never override safety and approval rules.
         </p>

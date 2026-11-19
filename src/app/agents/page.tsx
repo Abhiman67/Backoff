@@ -4,7 +4,7 @@ import PublicChrome from "@/components/PublicChrome";
 import { AGENT_TEMPLATES, SUGGESTED_PROMPTS } from "@/lib/agents";
 
 export const metadata: Metadata = {
-  title: "AI Agents — Meet your student team | Backoff",
+  title: "AI Agents — Meet your student team | VidyaSarthi",
   description: "Six specialized student agents: Study Coach, Project Guide, Career Scout, Writing Buddy, Code Mentor, Interview Coach. Shared context, approval-first actions.",
 };
 

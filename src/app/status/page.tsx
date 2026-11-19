@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import PublicChrome from "@/components/PublicChrome";
 
-export const metadata: Metadata = { title: "Status — Backoff", description: "Backoff system status and uptime." };
+export const metadata: Metadata = { title: "Status — VidyaSarthi", description: "VidyaSarthi system status and uptime." };
 
 export default function StatusPage() {
   return (

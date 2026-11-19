@@ -1,69 +1,38 @@
-# Route Inventory (spec §18)
+# Routes
 
-Last verified: 2026-09-30. Automated check: `src/lib/routes.test.ts`.
+Next.js maps route files under `src/app` to pages and API endpoints. This document groups the main routes; the source tree is the complete, current list.
 
-## Public (no auth)
+To list every page and API handler, run:
 
-| Route | APIs used | Status |
-|---|---|---|
-| `/` | none | verified 2026-09-30 |
-| `/agents` | none | verified 2026-09-30 |
-| `/how-it-works` | none | verified 2026-09-30 |
-| `/pricing` | none | verified 2026-09-30 |
-| `/login`, `/signup`, `/forgot-password` | next-auth, `/api/auth/*` | verified 2026-09-30 |
-| `/privacy`, `/terms`, `/accessibility`, `/status` | none | verified 2026-09-30 |
-| `/security` | none | verified 2026-09-30 |
-| `/invite/accept` | `/api/workspace-invites/accept` | needs check |
-| `/prototype` | none (design reference) | needs check |
+```bash
+rg --files src/app | rg '/(page|route)\.tsx?$'
+```
 
-## Authenticated (`/app/*`, proxy-guarded + onboarding gate)
+## Public pages
 
-| Route | APIs used | Status |
-|---|---|---|
-| `/app` | profile, tasks, projects, agents | verified 2026-09-30 |
-| `/app/today` | redirects to `/app` | verified 2026-09-30 |
-| `/app/learning`, `/app/learning/[subjectId]` | `/api/subjects*`, files | verified 2026-09-30 |
-| `/app/progress` | tasks, projects, subjects | added 2026-11-01 |
-| `/app/knowledge` | files, `/api/search` | added 2026-11-01 |
-| `/app/agents`, `/app/agents/[agentId]` | `/api/agents`, conversations, agent-runs, approvals | verified 2026-09-30 |
-| `/app/projects`, `/new`, `/[projectId]` | `/api/projects*`, tasks | verified 2026-09-30 |
-| `/app/tasks` | `/api/tasks` | verified 2026-09-30 |
-| `/app/files` | `/api/files*` | verified 2026-09-30 |
-| `/app/career` | `/api/career/*`, applications | verified 2026-09-30 |
-| `/app/approvals` | `/api/approvals*` | verified 2026-09-30 |
-| `/app/usage` | `/api/usage`, subscription | verified 2026-09-30 |
-| `/app/settings` (+profile/memory/privacy/integrations/audit) | `/api/profile`, integrations, audit | verified 2026-09-30 |
-| `/onboarding` | `/api/profile`, `/api/agents/ensure` | verified 2026-09-30 |
+- `/`, `/agents`, `/how-it-works`, `/pricing`, `/prototype`
+- `/login`, `/signup`, `/forgot-password`, `/invite/accept`
+- `/privacy`, `/terms`, `/security`, `/accessibility`, `/status`
 
-## Planned (spec §3, not built)
+## Student workspace
 
-`/app/progress`, `/app/knowledge`, `/app/notifications`, `/app/career/[goalId]`,
-`/app/settings/data`, `/api/me`, `/api/today`, `/api/knowledge`, `/api/search`,
-`/api/responsibilities*`, `/api/notifications*`.
+- `/app` and `/app/today`
+- `/app/agents` and `/app/agents/[agentId]`
+- `/app/projects`, `/app/projects/new`, and `/app/projects/[projectId]`
+- `/app/tasks`, `/app/progress`, `/app/learning`, and `/app/learning/[subjectId]`
+- `/app/files`, `/app/knowledge`, `/app/knowledge/graph`, `/app/knowledge/folders`, `/app/knowledge/templates`, and `/app/knowledge/[noteId]/history`
+- `/app/career` and `/app/career/[goalId]`
+- `/app/approvals`, `/app/notifications`, `/app/responsibilities`, and `/app/usage`
+- `/app/settings` with profile, memory, privacy, integrations, and audit pages
 
-## Built since baseline (Phases 1–4)
+## API groups
 
-`/security`, `/app/today` (alias), `/app/learning[/subjectId]`,
-`/api/recommendations`, `/api/capture`, `/api/activity`, `/api/subjects*`
-(subjects, topics, outcomes, sessions, evidence, revision-plan, files).
+The API routes live under `src/app/api`. Main groups include authentication, profile, agents and runs, approvals, tasks, projects, career, files, notes, learning subjects, notifications, responsibilities, integrations, workspaces, usage, privacy export, metrics, and health.
 
-## Built in Phase 5
+Google integration routes include:
 
-`/app/career/[goalId]`, `/api/projects/[id]/milestones`,
-`/api/projects/[id]/risks`, `/api/career/goals`, `/api/career/goals/[goalId]`,
-task↔milestone linking (`milestoneId` on task create/update).
+- `/api/integrations/classroom/connect`, `/callback`, `/courses`, `/sync`, `/materials`, and `/import`
+- `/api/integrations/drive/connect`, `/callback`, `/files`, and `/import`
+- `/api/integrations/calendar/connect`, `/callback`, and `/events`
 
-## Built in Phase 7
-
-`/app/responsibilities` (CRUD, pause/resume/trigger/delete, pause-all),
-`/app/notifications`, `/api/responsibilities*` (incl. secret-gated tick +
-`responsibility.tick` job + worker repeat schedule),
-`/api/notifications`, grouped/rate-limited notifications, settings kill
-switch, Topbar notifications link.
-
-## Built in Phase 8
-
-`/api/search` (workspace-wide, owner-scoped). Vectors stay on the
-pseudo-embedding stub; pgvector column lands with the extension
-(`prisma/pgvector.sql`). Integrations 2–6 remain mock-gated behind the
-same scope/approval checks; Drive is the validated read-only path.
+For exact methods, request schemas, authentication, and behavior, read each route handler in `src/app/api`.

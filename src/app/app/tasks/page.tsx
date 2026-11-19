@@ -147,7 +147,7 @@ export default function TasksPage() {
     upcomingHighPriority.sort((a, b) => a.daysAway - b.daysAway);
     const nextMilestone = upcomingHighPriority[0] ?? null;
     const totalTracked = tasks.length;
-    const completionRate = totalTracked > 0 ? Math.round((totalCompleted / totalTracked) * 100) : 100;
+      const completionRate = totalTracked > 0 ? Math.round((totalCompleted / totalTracked) * 100) : 0;
 
     return {
       dueTodayCount,
@@ -477,7 +477,7 @@ export default function TasksPage() {
       <div className="page-head tasks-page-head">
         <div>
           <h1>Tasks & planner</h1>
-          <p>Schedule academic deadlines, study blocks, and milestones with Notion-grade calendar intelligence.</p>
+          <p>See coursework deadlines, study blocks, and project milestones in one student planner.</p>
         </div>
         <div className="tasks-page-actions">
           <button
@@ -554,18 +554,15 @@ export default function TasksPage() {
               <span style={{ color: "var(--color-muted)", fontSize: 14 }}>No upcoming exams tracked</span>
             )}
           </div>
-          <span className="pulse-card-sub">AI monitors high-priority dates</span>
+          <span className="pulse-card-sub">Based on due dates and task priority</span>
         </div>
 
         <div className="pulse-card">
           <div className="pulse-card-label">
-            <TaskMetricIcon kind="momentum" /> Weekly Momentum
+            <TaskMetricIcon kind="momentum" /> Task Completion
           </div>
           <div className="pulse-card-value">
-            {metrics.completionRate}%
-            <span style={{ fontSize: 12, color: "var(--color-muted)", fontWeight: 600 }}>
-              ({metrics.totalCompleted}/{metrics.totalTracked} done)
-            </span>
+            {metrics.totalTracked > 0 ? <>{metrics.completionRate}% <span style={{ fontSize: 12, color: "var(--color-muted)", fontWeight: 600 }}>({metrics.totalCompleted}/{metrics.totalTracked} done)</span></> : <span style={{ fontSize: 13, color: "var(--color-muted)", fontWeight: 600 }}>Create a task to track completion</span>}
           </div>
           <div className="pulse-progress-track">
             <div className="pulse-progress-fill" style={{ width: `${metrics.completionRate}%` }} />

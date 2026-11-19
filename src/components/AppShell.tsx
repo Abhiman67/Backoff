@@ -25,7 +25,7 @@ export default async function AppShell({ children }: { children: React.ReactNode
       <aside className="sidebar">
         <div className="sidebar-main">
           <Link href="/" className="brand">
-            <LogoMark /> Backoff
+            <LogoMark /> VidyaSarthi
           </Link>
           <div className="label">Workspace</div>
           <SideNav />

@@ -46,7 +46,7 @@ export default function OnboardingPage() {
       {step === 1 && (
         <div className="mt-6 space-y-3">
           <h1 className="text-2xl font-extrabold">Start with your semester</h1>
-          <p className="text-sm text-muted">Backoff uses this to make course and workload suggestions feel specific to you.</p>
+          <p className="text-sm text-muted">VidyaSarthi uses this to make course and workload suggestions feel specific to you.</p>
           {(["institution", "degree", "semester"] as const).map((k) => (
             <input key={k} aria-label={k} placeholder={k === "institution" ? "College or university" : k === "degree" ? "Degree or program" : "Semester or year (e.g. 6)"} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className="h-11 w-full rounded-2xl border border-line bg-card px-4" />
           ))}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { profileSchema } from "@/lib/validations";
 import { handleApi, invalid } from "@/lib/api";
+import { objectStorage } from "@/lib/storage";
 
 export const GET = handleApi(async (_req, { userId }) => {
   const user = await db.user.findUnique({
@@ -46,6 +47,8 @@ export const PATCH = handleApi(async (req, { userId }) => {
 });
 
 export const DELETE = handleApi(async (_req, { userId }) => {
+  const files = await db.file.findMany({ where: { ownerId: userId }, select: { storageKey: true } });
+  await Promise.all(files.flatMap((file) => file.storageKey ? [objectStorage.del(file.storageKey)] : []));
   await db.user.delete({ where: { id: userId } });
   return NextResponse.json({ ok: true });
 });

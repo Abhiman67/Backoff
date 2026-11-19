@@ -6,6 +6,8 @@ import { ConfirmDialog } from "@/components/Dialog";
 type FileRow = { id: string; name: string; status: string; size: number };
 
 type StudyData = {
+  mode?: "ai" | "extractive" | "unavailable";
+  source?: { id: string; label: string };
   summary?: string;
   points?: string[];
   cards?: { q: string; a: string }[];
@@ -23,6 +25,12 @@ function ext(name: string): [string, string] {
 function fmt(size: number) {
   if (size > 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
   return `${Math.round(size / 1024)} KB`;
+}
+
+function studyModeLabel(mode: StudyData["mode"]) {
+  if (mode === "ai") return "AI · source grounded";
+  if (mode === "extractive") return "Extracted from source";
+  return "Text extraction needed";
 }
 
 function FlashcardDeck({ cards }: { cards: { q: string; a: string }[] }) {
@@ -350,7 +358,7 @@ export default function FilesPage() {
                 <div style={{ marginLeft: 46 }}>
                   {activeAction === "summarize" && (
                     <div style={{ marginTop: 10, padding: 14, background: "var(--color-paper)", borderRadius: 14, border: "1px solid var(--color-line)" }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, margin: "0 0 6px" }}>Key Summary</p>
+                      <p style={{ fontSize: 13, fontWeight: 700, margin: "0 0 6px" }}>Key Summary <span className="tag" style={{ marginLeft: 6 }}>{studyModeLabel(currentStudy.mode)}</span></p>
                       <p style={{ fontSize: 13, margin: "0 0 10px", lineHeight: 1.5 }}>{currentStudy.summary}</p>
                       {currentStudy.points && currentStudy.points.length > 0 && (
                         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--color-ink)", lineHeight: 1.6 }}>
@@ -363,11 +371,11 @@ export default function FilesPage() {
                   )}
 
                   {activeAction === "flashcards" && (
-                    <FlashcardDeck cards={currentStudy.cards ?? []} />
+                    <><span className="tag" style={{ marginLeft: 0 }}>{studyModeLabel(currentStudy.mode)}</span><FlashcardDeck cards={currentStudy.cards ?? []} /></>
                   )}
 
                   {activeAction === "quiz" && (
-                    <QuizDeck questions={currentStudy.quiz ?? []} />
+                    <><span className="tag" style={{ marginLeft: 0 }}>{studyModeLabel(currentStudy.mode)}</span><QuizDeck questions={currentStudy.quiz ?? []} /></>
                   )}
                 </div>
               )}

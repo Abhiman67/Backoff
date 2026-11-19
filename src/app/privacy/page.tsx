@@ -3,19 +3,19 @@ import Link from "next/link";
 import PublicChrome from "@/components/PublicChrome";
 
 export const metadata: Metadata = {
-  title: "Privacy — Your data, your control | Backoff",
-  description: "How Backoff collects, uses, retains and deletes your data. Export or delete anytime. No training on private notes without consent.",
+  title: "Privacy — Your data, your control | VidyaSarthi",
+  description: "What VidyaSarthi stores, how it uses your workspace data, and how you can export or delete your account.",
 };
 
 const sections = [
-  { h: "1. Data we collect", p: "Account (name, email), profile and goals you enter, files you upload, projects/tasks you create, conversations with agents, and minimal usage events (e.g. conversation started, file uploaded). We never log full private conversation content for analytics." },
-  { h: "2. How we use it", p: "To run your workspace: plan study sessions, answer from your notes with citations, track milestones and applications, enforce usage limits, and keep the service secure. Nothing else." },
-  { h: "3. AI training", p: "We do not train models on your private notes, files or chats without your explicit opt-in. Sample metrics on marketing pages are labeled illustrative until real analytics exist." },
-  { h: "4. Files & memory", p: "Uploads (PDF, TXT, MD, DOCX) are chunked for retrieval and linked to citations. Agent memory is scoped per agent — you choose which files and projects each agent may access, and can revoke access anytime." },
-  { h: "5. Sharing", p: "We don't sell your data. Third-party integrations (GitHub, Notion, Drive, MCP) run only after you connect them and approve each external action. Credentials are encrypted at rest (AES-256-GCM)." },
-  { h: "6. Retention & deletion", p: "Pending approvals expire after 7 days. You can export all data and delete profile, memories, files and account from Settings → Privacy. Deletion removes your records; audit logs for security-critical actions are retained minimally." },
-  { h: "7. Security", p: "Encryption in transit and at rest, per-user authorization on every record, Zod validation, rate limits, safe Markdown rendering and HTML sanitization. Uploaded content is treated as data, never as system instructions." },
-  { h: "8. Your rights & contact", p: "View, export and delete your data anytime in Settings. Questions: hello@backoff.ai. This page is a plain-language summary; the Terms govern use of the service." },
+  { h: "1. Data we store", p: "The app stores account and profile details, workspace content, notes, uploaded files and extracted text, agent conversations, approvals, and usage records. If you connect Google Classroom, Drive, or Calendar, the app also stores the data needed for the enabled integration features." },
+  { h: "2. How we use it", p: "The app uses workspace data to show your courses, organize study materials, answer questions using selected context, plan tasks, and run the features you request." },
+  { h: "3. AI providers", p: "When you use an AI feature, the app sends your prompt and selected context, such as relevant notes or coursework, to the configured AI provider. VidyaSarthi does not control that provider's retention or training settings. Review the provider's current terms and configuration." },
+  { h: "4. Files & memory", p: "The app extracts text from supported PDF, TXT, Markdown, and DOCX files so you can search and study them. Agents use context selected for the request. You can manage notes, files, and agent memory from the workspace." },
+  { h: "5. Integrations", p: "Google Classroom, Drive, and Calendar connections use read-only access. Drive attachment contents are imported only when you choose to import a supported file. GitHub, Notion, and Gmail actions are previews and do not call those providers. Integration tokens are encrypted at rest." },
+  { h: "6. Retention & deletion", p: "Pending approvals expire after 7 days. You can export your workspace or delete your account from Settings → Privacy. Deleting a file removes its content and chunks, then keeps a deleted metadata row. Account deletion removes user-owned records; some audit events may remain without an account link. Backup retention depends on the hosting configuration." },
+  { h: "7. Security", p: "The app encrypts integration tokens at rest and checks account ownership in API routes. No internet service can guarantee that every system is free of risk. Report a security issue using the contact address below." },
+  { h: "8. Your rights & contact", p: "Use Settings to export workspace data or delete your account. Questions: hello@backoff.ai. This summary describes the current product and may change as the service develops." },
 ];
 
 export default function Privacy() {
@@ -24,7 +24,7 @@ export default function Privacy() {
       <section className="wrap ref-section reveal" style={{ maxWidth: 860 }}>
         <div className="kicker">Trust</div>
         <h1 data-split style={{ fontSize: "clamp(36px,5vw,58px)", letterSpacing: "-0.065em", lineHeight: 1, margin: "0 0 12px" }}>Privacy, in plain language.</h1>
-        <p className="lead">Last updated: September 2026 · You can view, export and delete your profile, memories and files anytime.</p>
+        <p className="lead">Last updated: November 2026 · You can export workspace data or delete your account from Settings.</p>
         <div className="card" style={{ marginTop: 28, display: "grid", gap: 22 }}>
           {sections.map((s) => (
             <div key={s.h}><h3 style={{ margin: "0 0 8px", fontSize: 17 }}>{s.h}</h3><p style={{ margin: 0, color: "#4c555c", lineHeight: 1.7, fontSize: 14 }}>{s.p}</p></div>

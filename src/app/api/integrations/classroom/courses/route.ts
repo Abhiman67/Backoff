@@ -1,21 +1,24 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
 import { handleApi, HttpError } from "@/lib/api";
-import { decryptToken } from "@/lib/integrations/crypto";
-import { isMockToken, listClassroomCourses } from "@/lib/integrations/classroom";
+import { describeClassroomFailure, isMockToken, listClassroomCourses } from "@/lib/integrations/classroom";
+import { getClassroomAccessToken } from "@/lib/integrations/classroom-token";
+import { logError } from "@/lib/observability/logger";
 
-export const GET = handleApi(async (_, { userId }) => {
-  const account = await db.integrationAccount.findUnique({
-    where: { ownerId_provider: { ownerId: userId, provider: "classroom" } },
-  });
-  if (!account?.accessTokenEncrypted) {
-    throw new HttpError("CLASSROOM_NOT_CONNECTED", 404, "Google Classroom is not connected.");
-  }
-  if (account.expiresAt && account.expiresAt.getTime() < Date.now()) {
+export const GET = handleApi(async (_, { userId, requestId }) => {
+  let token: string | null;
+  try {
+    token = await getClassroomAccessToken(userId);
+  } catch {
     throw new HttpError("TOKEN_EXPIRED", 401, "Classroom access expired. Reconnect to sync courses.");
   }
-
-  const token = decryptToken(account.accessTokenEncrypted);
-  const courses = await listClassroomCourses(token);
+  if (!token) throw new HttpError("CLASSROOM_NOT_CONNECTED", 404, "Google Classroom is not connected.");
+  let courses;
+  try {
+    courses = await listClassroomCourses(token);
+  } catch (error) {
+    const failure = describeClassroomFailure(error);
+    logError("classroom.courses.fetch_failed", { requestId, ...failure.details });
+    throw new HttpError("CLASSROOM_SYNC_FAILED", 502, failure.message, true, failure.details);
+  }
   return NextResponse.json({ courses, demo: isMockToken(token) }, { headers: { "Cache-Control": "no-store" } });
 });

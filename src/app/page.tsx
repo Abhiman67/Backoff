@@ -24,7 +24,7 @@ const studentStories = [
 ];
 
 const faqs = [
-  { q: "Is Backoff a replacement for teachers or mentors?", a: "No. It's a support layer for planning, practice and drafting. You stay responsible for decisions and final work — agents coach, explain and suggest, they don't hand in work for you." },
+  { q: "Is VidyaSarthi a replacement for teachers or mentors?", a: "No. It's a support layer for planning, practice and drafting. You stay responsible for decisions and final work — agents coach, explain and suggest, they don't hand in work for you." },
   { q: "Can I use my own notes and project files?", a: "Yes. Bring PDFs, text and markdown into your workspace. Agents cite page names when they answer from your files, and say so clearly when nothing relevant is found." },
   { q: "Will agents do my assignments for me?", a: "No. For graded work Study Coach prefers hints, explanations and practice questions first. Generated drafts are marked as drafts and need your review." },
   { q: "Is my data used for AI training?", a: "No training on your private notes without consent. You can view, export and delete your profile, memories and files anytime from Settings → Privacy." },
@@ -39,7 +39,7 @@ export default function Home() {
       <div className="scroll-progress" aria-hidden="true"><i /></div>
       <header className="site-header">
         <nav className="wrap header-inner" aria-label="Primary">
-          <Link className="brand" href="/"><LogoMark /> Backoff</Link>
+          <Link className="brand" href="/"><LogoMark /> VidyaSarthi</Link>
           <div className="navlinks">
             <Link href="/agents">Agents</Link>
             <Link href="/how-it-works">How it works</Link>
@@ -77,7 +77,7 @@ export default function Home() {
             </div>
             <p className="micro-trust">Preview access · No card needed · Set up in ~2 min · <Link href="#proof">See how it works</Link></p>
           </div>
-          <div className="preview" data-tilt data-spot role="img" aria-label="Preview of the Backoff workspace showing study streak, project progress and agent activity">
+          <div className="preview" data-tilt data-spot role="img" aria-label="Preview of the VidyaSarthi workspace showing study streak, project progress and agent activity">
             <div className="window">
               <div className="windowbar"><i className="dot" /><i className="dot" /><i className="dot" /><span className="live-badge"><span className="pulse-dot" />illustrative preview</span></div>
               <div className="workspace">
@@ -107,8 +107,8 @@ export default function Home() {
           </div>
         </section>
 
-        <div className="wrap hero-proof" aria-label="Backoff principles">
-          <div className="proof-rating"><span className="proof-eyebrow">Built around real student workflows</span><span className="proof-copy">Study, projects and career work in one approval-first workspace.</span><Link href="#proof" className="trust-link">What guides Backoff <span aria-hidden="true">↗</span></Link></div>
+        <div className="wrap hero-proof" aria-label="VidyaSarthi principles">
+          <div className="proof-rating"><span className="proof-eyebrow">Built around real student workflows</span><span className="proof-copy">Study, projects and career work in one approval-first workspace.</span><Link href="#proof" className="trust-link">What guides VidyaSarthi <span aria-hidden="true">↗</span></Link></div>
         </div>
 
         <div className="marquee" aria-hidden="true"><div className="marquee-track"><span>Study Coach ✦ Project Guide ✦ Career Scout ✦ Writing Buddy ✦ Code Mentor ✦ Interview Coach ✦&nbsp;</span><span>Study Coach ✦ Project Guide ✦ Career Scout ✦ Writing Buddy ✦ Code Mentor ✦ Interview Coach ✦&nbsp;</span></div></div>
@@ -164,7 +164,7 @@ export default function Home() {
             <div className="steps" data-stagger>
               <div className="step"><div className="step-num">01 / Set up</div><h3>Tell us where you want to go.</h3><p>Add semester, subjects, skills and goals. Import notes in one click.</p><div className="step-mock" aria-hidden="true">Sem 6 · DBMS · 4h/day · Internship</div></div>
               <div className="step"><div className="step-num">02 / Build your team</div><h3>Choose the right agents.</h3><p>Start with 2 free. Give each a role and the files it may use.</p><div className="step-mock" aria-hidden="true">✦ Study Coach ✓ &nbsp; ↗ Career Scout ✓</div></div>
-              <div className="step"><div className="step-num">03 / Make progress</div><h3>Let the work backoff.</h3><p>Daily focus, reminders and approvals. Nothing sends without you.</p><div className="step-mock" aria-hidden="true">Today: 3 tasks · 45 min · 1 approval</div></div>
+              <div className="step"><div className="step-num">03 / Make progress</div><h3>Turn small steps into progress.</h3><p>Daily focus, reminders and approvals. Nothing sends without you.</p><div className="step-mock" aria-hidden="true">Today: 3 tasks · 45 min · 1 approval</div></div>
             </div>
             <div className="how-cta"><Link className="button primary-orange" href="/signup">Create your workspace ↗</Link><Link className="how-link" href="/how-it-works">See detailed walkthrough →</Link></div>
           </div>
@@ -173,7 +173,7 @@ export default function Home() {
         <section id="proof" className="wrap ref-section reveal">
           <div className="section-head">
             <div><div className="kicker">04 — What guides us</div><h2 data-split>Progress you can<br />understand.</h2></div>
-            <p>Backoff is designed around useful, explainable support rather than inflated scores or hidden automation.</p>
+            <p>VidyaSarthi is designed around useful, explainable support rather than inflated scores or hidden automation.</p>
           </div>
           <div className="proof-grid" data-stagger>
             {proofPoints.map((point) => (
@@ -288,12 +288,12 @@ export default function Home() {
 
       <footer className="site-footer">
         <div className="wrap footer-top">
-          <div className="footer-brand"><div className="brand"><LogoMark /> Backoff</div><p>A focused AI workspace for students who want to learn deeply, build confidently and move forward.</p><p className="footer-badge">⦿ Human-led, AI-assisted · Approval-first</p></div>
+          <div className="footer-brand"><div className="brand"><LogoMark /> VidyaSarthi</div><p>A focused AI workspace for students who want to learn deeply, build confidently and move forward.</p><p className="footer-badge">⦿ Human-led, AI-assisted · Approval-first</p></div>
           <div className="footer-column"><strong>Product</strong><Link href="/agents">AI agents</Link><Link href="/how-it-works">How it works</Link><Link href="/pricing">Plans &amp; access</Link><Link href="/signup">Get started</Link></div>
           <div className="footer-column"><strong>Resources</strong><Link href="#use-cases">Use cases</Link><Link href="#faq">FAQ</Link><Link href="/login">Sign in</Link><Link href="/forgot-password">Reset password</Link></div>
           <div className="footer-column"><strong>Trust</strong><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/security">Security</Link><Link href="/accessibility">Accessibility</Link><Link href="/status">Status</Link><a href="mailto:hello@backoff.ai">hello@backoff.ai</a></div>
         </div>
-        <div className="wrap footer-bottom"><span>© 2026 Backoff. Built for ambitious students.</span><span>Made for meaningful progress · <Link href="/privacy">Privacy-first</Link></span></div>
+        <div className="wrap footer-bottom"><span>© 2026 VidyaSarthi. Built for ambitious students.</span><span>Made for meaningful progress · <Link href="/privacy">Privacy-first</Link></span></div>
       </footer>
     </>
   );

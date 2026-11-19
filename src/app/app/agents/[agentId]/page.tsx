@@ -716,7 +716,7 @@ export default function ChatPage() {
             )}
           </div>
           <p className="dialog-desc">
-            Backoff matched excerpts from this file against your prompt using semantic chunk retrieval. You can inspect or manage all your course notes in the Files workspace.
+            VidyaSarthi matched excerpts from this file against your prompt using semantic chunk retrieval. You can inspect or manage all your course notes in the Files workspace.
           </p>
           <div className="dialog-actions">
               <Link

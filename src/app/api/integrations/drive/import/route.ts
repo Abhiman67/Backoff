@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getQuota } from "@/lib/quotas";
 import { downloadDriveFile } from "@/lib/integrations/drive";
-import { decryptToken } from "@/lib/integrations/crypto";
+import { getDriveAccessToken } from "@/lib/integrations/drive-token";
 import { objectStorage, storageKeyFor } from "@/lib/storage";
 import "@/lib/jobs/processors";
 import { enqueue } from "@/lib/jobs/queue";
@@ -18,13 +18,17 @@ export const POST = handleApi(async (req, { userId }) => {
   const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) throw invalid("Invalid input.");
 
-  const acct = await db.integrationAccount.findUnique({ where: { ownerId_provider: { ownerId: userId, provider: "drive" } } });
-  if (!acct?.accessTokenEncrypted) throw new HttpError("DRIVE_NOT_CONNECTED", 404, "Drive not connected.");
-  if (acct.expiresAt && acct.expiresAt.getTime() < Date.now()) throw new HttpError("TOKEN_EXPIRED", 401, "Token expired, reconnect");
+  let accessToken: string | null;
+  try {
+    accessToken = await getDriveAccessToken(userId);
+  } catch {
+    throw new HttpError("TOKEN_EXPIRED", 401, "Drive access expired. Reconnect to import files.");
+  }
+  if (!accessToken) throw new HttpError("DRIVE_NOT_CONNECTED", 404, "Drive not connected.");
 
   let dl;
   try {
-    dl = await downloadDriveFile(decryptToken(acct.accessTokenEncrypted), parsed.data.fileId);
+    dl = await downloadDriveFile(accessToken, parsed.data.fileId);
   } catch (e) {
     throw new HttpError("DRIVE_IMPORT_FAILED", 502, e instanceof Error ? e.message : "Drive import failed.");
   }

@@ -1,8 +1,8 @@
-# Backoff — Exact Next Implementation Plan
+# VidyaSarthi — Exact Next Implementation Plan
 
 ## 1. Purpose
 
-This document tells the coding agent exactly what to implement next in Backoff.
+This document tells the coding agent exactly what to implement next in VidyaSarthi.
 
 It assumes that the first agentic architecture foundation has already been added:
 
@@ -24,7 +24,7 @@ The goal now is to make the first complete agent workflow reliable:
 ```text
 User opens an agent
   → User enters a goal
-  → Backoff creates a persistent run
+  → VidyaSarthi creates a persistent run
   → Planner creates validated steps
   → Safe steps execute
   → Risky steps pause for approval
