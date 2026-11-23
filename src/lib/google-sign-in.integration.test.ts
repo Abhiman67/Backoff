@@ -27,4 +27,14 @@ describe("Google sign-in", () => {
     expect(await db.user.findUnique({ where: { id: user.id }, select: { passwordHash: true } }))
       .toEqual({ passwordHash: "legacy-test-hash" });
   });
+
+  it("connects a verified Google Workspace identity to its existing workspace", async () => {
+    const user = await db.user.create({
+      data: { name: "College student", email: "student@college.example", passwordHash: "legacy" },
+    });
+    const identity = { subject: "college-subject", email: user.email, hostedDomain: "college.example", link: null };
+    expect(await resolveGoogleUser(identity)).toMatchObject({ kind: "signed-in", user: { id: user.id } });
+    expect(await resolveGoogleUser(identity)).toMatchObject({ kind: "signed-in", user: { id: user.id } });
+    expect(await resolveGoogleUser({ ...identity, subject: "other-subject" })).toEqual({ kind: "link-conflict" });
+  });
 });

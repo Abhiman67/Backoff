@@ -3,12 +3,12 @@ import { LogoMark } from "@/components/Logo";
 import ScrollMotion from "@/components/ScrollMotion";
 
 const agents = [
-  { icon: "◒", name: "Study Coach", pill: "Academic", desc: "Turn 40-page PDFs into 45-min revision plans, flashcards and quizzes — with citations to your notes.", href: "/agents" },
-  { icon: "⌘", name: "Project Guide", pill: "Projects", desc: "Scope your major project, split it into milestones and prep viva answers without scope creep.", href: "/agents" },
-  { icon: "↗", name: "Career Scout", pill: "Career", desc: "Match internships to your skills, close resume gaps and draft cover letters you approve first.", href: "/agents" },
-  { icon: "✎", name: "Writing Buddy", pill: "Writing", desc: "Make reports, emails and SOPs clear and confident with structure and tone feedback.", href: "/agents" },
-  { icon: "◉", name: "Code Mentor", pill: "Coding", desc: "Debug with hints first, learn the concept, then get test cases — never blind copy-paste.", href: "/agents" },
-  { icon: "☼", name: "Interview Coach", pill: "Career", desc: "Practice HR + technical mocks and get kind, specific STAR feedback in minutes.", href: "/agents" },
+  { icon: "◒", name: "Study Coach", pill: "Academic", desc: "Turn 40-page PDFs into 45-min revision plans, flashcards and quizzes — with citations to your notes.", href: "/agents#study-coach" },
+  { icon: "⌘", name: "Project Guide", pill: "Projects", desc: "Scope your major project, split it into milestones and prep viva answers without scope creep.", href: "/agents#project-guide" },
+  { icon: "↗", name: "Career Scout", pill: "Career", desc: "Match internships to your skills, close resume gaps and draft cover letters you approve first.", href: "/agents#career-scout" },
+  { icon: "✎", name: "Writing Buddy", pill: "Writing", desc: "Make reports, emails and SOPs clear and confident with structure and tone feedback.", href: "/agents#writing-buddy" },
+  { icon: "◉", name: "Code Mentor", pill: "Coding", desc: "Debug with hints first, learn the concept, then get test cases — never blind copy-paste.", href: "/agents#code-mentor" },
+  { icon: "☼", name: "Interview Coach", pill: "Career", desc: "Practice HR + technical mocks and get kind, specific STAR feedback in minutes.", href: "/agents#interview-coach" },
 ];
 
 const proofPoints = [
@@ -75,7 +75,7 @@ export default function Home() {
               <Link className="button primary-orange" data-magnetic href="/signup">Create your workspace <span aria-hidden="true">↗</span></Link>
               <Link className="button secondary" href="/agents">Meet the agents</Link>
             </div>
-            <p className="micro-trust">Preview access · No card needed · Set up in ~2 min · <Link href="#proof">See how it works</Link></p>
+            <p className="micro-trust">Preview access · No card needed · Set up in ~2 min · <Link href="#how">See how it works</Link></p>
           </div>
           <div className="preview" data-tilt data-spot role="img" aria-label="Preview of the VidyaSarthi workspace showing study streak, project progress and agent activity">
             <div className="window">
@@ -245,7 +245,7 @@ export default function Home() {
             <article className="price featured spot">
               <span className="popular">Most popular</span>
               <h3>Student Pro</h3><p>For serious academic momentum.</p>
-              <div className="amount">₹299 <small>/ planned monthly price</small></div>
+              <div className="amount">₹299 <small>/ planned monthly price · billing not live</small></div>
               <ul><li>Unlimited agents + custom agents</li><li>Unlimited conversations</li><li>Project workspace + milestones</li><li>Career + interview coaching</li><li>Priority processing</li></ul>
               <Link className="button primary-orange full" href="/pricing">See what&apos;s planned</Link>
             </article>
@@ -278,7 +278,7 @@ export default function Home() {
             <p>Create a focused workspace for study plans, project momentum and career drafts — with you in control.</p>
             <form className="cta-form" action="/signup" method="get">
               <label className="sr-only" htmlFor="cta-email">Email address</label>
-              <input id="cta-email" name="email" type="email" placeholder="you@college.edu" autoComplete="email" />
+              <input id="cta-email" name="email" type="email" placeholder="you@college.edu" autoComplete="email" required />
             <button className="button cta-btn" type="submit">Create your workspace ↗</button>
             </form>
             <small className="cta-note">Preview access is currently free · You approve every external action</small>

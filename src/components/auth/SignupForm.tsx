@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import ScrollMotion from "@/components/ScrollMotion";
+import { AuthShell } from "./AuthShell";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 
 export default function SignupForm({ googleEnabled, passwordEnabled }: { googleEnabled: boolean; passwordEnabled: boolean }) {
@@ -23,41 +23,42 @@ export default function SignupForm({ googleEnabled, passwordEnabled }: { googleE
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    const res = await fetch("/api/auth/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error ?? "Signup failed.");
-      return;
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Signup failed.");
+        return;
+      }
+      const login = await signIn("credentials", { email, password, redirect: false });
+      if (!login || login.error) setError("Account created. Please sign in.");
+      else router.push("/app");
+    } catch {
+      setError("Couldn’t connect. Please try again.");
     }
-    const login = await signIn("credentials", { email, password, redirect: false });
-    if (login?.error) setError("Account created. Please sign in.");
-    else router.push("/app");
   }
 
   return (
-    <main className="wrap" style={{ padding: "60px 0" }}>
-      <ScrollMotion />
-      <div className="login-card reveal in">
-        <div className="eyebrow">Join VidyaSarthi</div>
-        <h2>Build your team.</h2>
-        <p>Create your workspace and meet your AI team.</p>
-        {googleEnabled && <GoogleSignInButton redirectTo="/app/settings/integrations" />}
-        {passwordEnabled && <form onSubmit={onSubmit}>
+    <AuthShell title="Make space for what’s next." description="Create your workspace and bring your studies together.">
+      {googleEnabled && <GoogleSignInButton redirectTo="/app/settings/integrations" />}
+      {googleEnabled && passwordEnabled && <div className="auth-divider"><span>or continue with email</span></div>}
+      {passwordEnabled && (
+        <form className="auth-form" onSubmit={onSubmit}>
           <label htmlFor="su-name">Full name</label>
-          <input id="su-name" placeholder="Aarav Sharma" value={name} onChange={(e) => setName(e.target.value)} />
+          <input id="su-name" autoComplete="name" required placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
           <label htmlFor="su-email">Email address</label>
-          <input id="su-email" type="email" placeholder="you@university.edu" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <label htmlFor="su-pass">Password (8+ chars)</label>
-          <input id="su-pass" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
-          {error && <p style={{ color: "#c0392b", fontSize: 13 }}>{error}</p>}
-          <button className="button primary" style={{ width: "100%", justifyContent: "center", marginTop: 18 }} type="submit">Create account ↗</button>
-        </form>}
-        <p style={{ textAlign: "center" }}>Have an account? <Link href="/login" style={{ color: "var(--color-brand)", fontWeight: 700 }}>Sign in</Link></p>
-      </div>
-    </main>
+          <input id="su-email" type="email" autoComplete="email" required placeholder="you@university.edu" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label htmlFor="su-pass">Password</label>
+          <input id="su-pass" type="password" autoComplete="new-password" required minLength={8} placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} />
+          {error && <p className="auth-error" role="alert">{error}</p>}
+          <button className="auth-submit" type="submit">Create account <span aria-hidden="true">↗</span></button>
+        </form>
+      )}
+      <p className="auth-switch">Already have an account? <Link href="/login">Sign in</Link></p>
+    </AuthShell>
   );
 }

@@ -19,13 +19,14 @@ export function GoogleSignInButton({ redirectTo }: { redirectTo: string }) {
   }
 
   return (
-    <div className="mb-4">
+    <div className="auth-google-wrap">
       <button
         type="button"
-        className="button primary w-full justify-center"
+        className="auth-google-button"
         disabled={busy}
         onClick={continueWithGoogle}
       >
+        <span className="auth-google-icon" aria-hidden="true">G</span>
         {busy ? "Opening Google…" : "Continue with Google"}
       </button>
       {failed && <p role="alert" className="mt-2">Couldn’t open Google sign-in. Try again.</p>}

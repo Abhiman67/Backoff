@@ -9,21 +9,23 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ institution: "", degree: "", semester: "", goals: [] as string[], subjects: "", skills: "", careerTarget: "", studyHours: 2 });
   const [saving, setSaving] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/profile").then((r) => {
-      if (r.status === 401) router.push("/login");
-    });
+      if (r.status === 401) router.replace("/login");
+    }).catch(() => setError("Could not check your session. Please refresh and try again.")).finally(() => setCheckingSession(false));
   }, [router]);
 
   function toggleGoal(g: string) {
     setForm((f) => ({ ...f, goals: f.goals.includes(g) ? f.goals.filter((x) => x !== g) : [...f.goals, g] }));
   }
 
-  async function finish(skip = false) {
+  async function finish() {
     setSaving(true);
     setError("");
+    try {
     const res = await fetch("/api/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -34,9 +36,14 @@ export default function OnboardingPage() {
         careerTarget: form.careerTarget, studyHours: form.studyHours, onboardingDone: true,
       }),
     });
-    if (!res.ok) { setError("We couldn’t save your setup. Try again."); setSaving(false); return; }
-    await fetch("/api/agents/ensure", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goals: form.goals }) });
+    if (!res.ok) throw new Error("We couldn’t save your setup. Try again.");
+    const agents = await fetch("/api/agents/ensure", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goals: form.goals }) });
+    if (!agents.ok) throw new Error("Your setup was saved, but workspace preparation failed. Try opening your workspace again.");
     router.push("/app");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setSaving(false);
+    }
   }
 
   return (
@@ -58,7 +65,7 @@ export default function OnboardingPage() {
           <p className="text-sm text-muted">Pick any that matter this semester. You can change these later.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {GOALS.map((g) => (
-              <button key={g} onClick={() => toggleGoal(g)} className={`rounded-full border px-4 py-2 text-sm font-bold ${form.goals.includes(g) ? "bg-ink text-white" : "bg-card"}`}>{g}</button>
+              <button type="button" key={g} aria-pressed={form.goals.includes(g)} onClick={() => toggleGoal(g)} className={`rounded-full border px-4 py-2 text-sm font-bold ${form.goals.includes(g) ? "bg-ink text-white" : "bg-card"}`}>{g}</button>
             ))}
           </div>
         </div>
@@ -69,6 +76,9 @@ export default function OnboardingPage() {
           <input placeholder="Subjects (comma separated)" value={form.subjects} onChange={(e) => setForm({ ...form, subjects: e.target.value })} className="h-11 w-full rounded-2xl border border-line bg-card px-4" />
           <input placeholder="Skills" value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })} className="h-11 w-full rounded-2xl border border-line bg-card px-4" />
           <input placeholder="Career target" value={form.careerTarget} onChange={(e) => setForm({ ...form, careerTarget: e.target.value })} className="h-11 w-full rounded-2xl border border-line bg-card px-4" />
+          <label className="block text-sm font-bold">Study hours per day: {form.studyHours}
+            <input aria-label="Study hours per day" type="range" min="0" max="12" value={form.studyHours} onChange={(e) => setForm({ ...form, studyHours: Number(e.target.value) })} className="mt-2 w-full" />
+          </label>
         </div>
       )}
       {step === 4 && (
@@ -80,10 +90,10 @@ export default function OnboardingPage() {
       )}
       {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
       <div className="mt-8 flex gap-2">
-        {step > 1 && <button onClick={() => setStep(step - 1)} className="rounded-full border border-line px-5 py-2.5 font-bold">Back</button>}
-        {step < 4 ? <button onClick={() => setStep(step + 1)} className="rounded-full bg-ink px-5 py-2.5 font-bold text-white">Next</button>
-          : <button onClick={() => void finish()} disabled={saving} className="rounded-full bg-brand px-5 py-2.5 font-bold text-white">{saving ? "Saving…" : "Open my workspace"}</button>}
-        <button onClick={() => void finish(true)} disabled={saving} className="text-sm underline">Skip for now</button>
+        {step > 1 && <button type="button" onClick={() => setStep((current) => current - 1)} className="rounded-full border border-line px-5 py-2.5 font-bold">Back</button>}
+        {step < 4 ? <button type="button" onClick={() => setStep((current) => current + 1)} className="rounded-full bg-ink px-5 py-2.5 font-bold text-white">Next</button>
+          : <button type="button" onClick={() => void finish()} disabled={saving || checkingSession} className="rounded-full bg-brand px-5 py-2.5 font-bold text-white">{saving ? "Saving…" : "Open my workspace"}</button>}
+        <button type="button" onClick={() => void finish()} disabled={saving || checkingSession} className="text-sm underline">{saving ? "Saving…" : "Skip for now"}</button>
       </div>
     </main>
   );

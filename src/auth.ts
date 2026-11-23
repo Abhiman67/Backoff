@@ -14,6 +14,7 @@ const googleIdentity = z.object({
   email: z.email().max(255),
   email_verified: z.literal(true),
   name: z.string().optional(),
+  hd: z.string().optional(),
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -35,6 +36,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         subject: account.providerAccountId,
         email: identity.data.email,
         name: identity.data.name,
+        hostedDomain: identity.data.hd,
         link: linkUserId ? { requestedId: linkUserId, sessionId: (await auth())?.user?.id } : null,
       });
 

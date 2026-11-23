@@ -43,7 +43,7 @@ export default function AgentsPage() {
       <section className="wrap ref-section reveal" style={{ paddingTop: 20 }}>
         <div className="agents" data-stagger>
           {AGENT_TEMPLATES.map((a, i) => (
-            <article key={a.template} className="agent agent-card-new" data-spot>
+            <article key={a.template} id={a.template} className="agent agent-card-new" data-spot>
               <div className="agent-top"><div className="icon" aria-hidden="true">{icons[i % icons.length]}</div><span className="pill">{a.category}</span></div>
               <h3>{a.name}</h3>
               <p style={{ fontWeight: 700, color: "var(--color-ink)" }}>{a.role}</p>
@@ -56,7 +56,7 @@ export default function AgentsPage() {
                   ))}
                 </div>
               )}
-              <Link href="/signup" className="card-link">Start with {a.name} →</Link>
+              <Link href={`/signup?agent=${encodeURIComponent(a.template)}`} className="card-link">Start with {a.name} →</Link>
             </article>
           ))}
         </div>

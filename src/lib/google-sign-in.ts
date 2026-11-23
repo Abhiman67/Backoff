@@ -12,10 +12,11 @@ type GoogleIdentity = {
   subject: string;
   email: string;
   name?: string;
+  hostedDomain?: string;
   link: { requestedId: string; sessionId: string | undefined } | null;
 };
 
-export async function resolveGoogleUser({ subject, email: rawEmail, name: googleName, link }: GoogleIdentity): Promise<GoogleSignInResult> {
+export async function resolveGoogleUser({ subject, email: rawEmail, name: googleName, hostedDomain, link }: GoogleIdentity): Promise<GoogleSignInResult> {
   const email = rawEmail.toLowerCase();
   if (link && link.requestedId !== link.sessionId) return { kind: "link-email" };
 
@@ -39,7 +40,21 @@ export async function resolveGoogleUser({ subject, email: rawEmail, name: google
       return { kind: "link-conflict" };
     }
   }
-  if (existing) return { kind: "link-required" };
+  if (existing) {
+    const domain = email.split("@")[1];
+    const authoritative = domain === "gmail.com" || (hostedDomain && hostedDomain.toLowerCase() === domain);
+    if (!authoritative) return { kind: "link-required" };
+    try {
+      const updated = await db.user.updateMany({
+        where: { id: existing.id, googleSubject: null },
+        data: { googleSubject: subject },
+      });
+      return updated.count === 1 ? { kind: "signed-in", user: existing } : { kind: "link-conflict" };
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
+      return { kind: "link-conflict" };
+    }
+  }
 
   const name = googleName?.trim().slice(0, 80) || email.split("@")[0].slice(0, 80);
   try {
