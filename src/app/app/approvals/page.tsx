@@ -2,11 +2,14 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { z } from "zod";
+import { readThreadData, studyPlanApprovalSchema } from "@/lib/study-coach-thread";
 import { formatTtlRemaining } from "@/lib/approvals";
 
 type Approval = {
   id: string;
-  agentId: string;
+  agentName: string | null;
+  runId: string | null;
   title: string;
   description: string;
   payload: string;
@@ -33,6 +36,47 @@ type ApprovalsResponse = {
   };
   auditLogs: AuditLog[];
 };
+
+const taskProposal = z.object({
+  type: z.literal("create_task").optional(),
+  toolName: z.literal("create_task").optional(),
+  title: z.string().trim().min(1),
+  priority: z.enum(["low", "medium", "high"]).optional(),
+  dueDate: z.iso.datetime({ offset: true }).or(z.iso.date()).nullish(),
+}).refine((value) => value.type === "create_task" || value.toolName === "create_task");
+
+function describeApproval(approval: Approval) {
+  const task = readThreadData(taskProposal, approval.payload);
+  if (task && (task.type === "create_task" || approval.runId)) {
+    const findingPrefix = `${task.title}\n\n`;
+    const reason = approval.description.startsWith(findingPrefix)
+      ? approval.description.slice(findingPrefix.length).trim()
+      : "";
+    return {
+      title: `Add “${task.title}” to Tasks`,
+      effect: "Approving adds this task to your planner.",
+      reason,
+      button: "Add task",
+      details: [
+        task.priority ? `${task.priority[0].toUpperCase()}${task.priority.slice(1)} priority` : null,
+        task.dueDate ? `Due ${new Date(task.dueDate.length === 10 ? task.dueDate + "T00:00:00" : task.dueDate).toLocaleDateString()}` : null,
+      ].filter(Boolean),
+    };
+  }
+
+  const plan = readThreadData(studyPlanApprovalSchema, approval.payload);
+  if (plan) {
+    return {
+      title: approval.title,
+      effect: "Approving adds these study sessions to your planner.",
+      reason: approval.description,
+      button: "Add study sessions",
+      details: plan.sessions,
+    };
+  }
+
+  return { title: approval.title, effect: approval.description, reason: "", button: "Approve request", details: [] };
+}
 
 export default function ApprovalsPage() {
   const [data, setData] = useState<ApprovalsResponse | null>(null);
@@ -118,7 +162,8 @@ export default function ApprovalsPage() {
       return (
         a.title.toLowerCase().includes(q) ||
         a.description.toLowerCase().includes(q) ||
-        a.agentId.toLowerCase().includes(q)
+        describeApproval(a).title.toLowerCase().includes(q) ||
+        (a.agentName ?? "").toLowerCase().includes(q)
       );
     });
   }, [approvals, activeTab, searchQuery]);
@@ -132,15 +177,7 @@ export default function ApprovalsPage() {
       case "denied":
         return <span className="tag">Denied</span>;
       case "expired":
-        return <span className="tag">Expired (7d TTL)</span>;
-    }
-  }
-
-  function parsePayload(payloadStr: string) {
-    try {
-      return JSON.parse(payloadStr);
-    } catch {
-      return null;
+        return <span className="tag">Expired</span>;
     }
   }
 
@@ -151,7 +188,7 @@ export default function ApprovalsPage() {
         <div>
           <h1>Approvals and safety</h1>
           <p>
-            Human-in-the-loop governance: AI agents cannot modify your calendar, tasks, or files without your explicit approval.
+            Review what your agents propose. Approve an action to let it run, or decline to skip it.
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -166,7 +203,7 @@ export default function ApprovalsPage() {
       </div>
 
       {/* Metrics Banner */}
-      <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+      <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
         <div className="card">
           <div className="text-xs font-medium text-muted">Pending review</div>
           <div className="mt-1 text-2xl font-extrabold flex items-center gap-2">
@@ -193,13 +230,6 @@ export default function ApprovalsPage() {
           </div>
         </div>
 
-        <div className="card">
-          <div className="text-xs font-medium text-muted">Safety policy</div>
-          <div className="mt-1 text-lg font-bold flex items-center gap-1.5">
-            100% guarded
-          </div>
-          <div className="text-[11px] text-muted">7-day TTL auto-expiry</div>
-        </div>
       </div>
 
       {/* Filter Tabs & Search */}
@@ -357,93 +387,46 @@ export default function ApprovalsPage() {
             </div>
           ) : (
             filteredApprovals.map((approval) => {
-              const payload = parsePayload(approval.payload);
+              const proposal = describeApproval(approval);
               const ttlRemaining = formatTtlRemaining(new Date(approval.createdAt));
               const isActing = actingId === approval.id;
 
               return (
-                <div
-                  key={approval.id}
-                  className="card"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {renderStatusBadge(approval.status)}
-                        <span className="text-xs text-muted font-medium">
-                          Agent: <span className="font-semibold">{approval.agentId}</span>
-                        </span>
-                        <span className="text-xs text-muted">·</span>
-                        <span className="text-xs text-muted">
-                          Created {new Date(approval.createdAt).toLocaleDateString()}
-                        </span>
-                        {approval.status === "pending" && (
-                          <span className="tag">
-                            TTL: {ttlRemaining}
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="text-base font-bold pt-1">{approval.title}</h3>
-                      <p className="text-xs text-muted leading-relaxed">{approval.description}</p>
-                    </div>
-
-                    {/* Action Controls for Pending Approvals */}
-                    {approval.status === "pending" && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        <button
-                          type="button"
-                          onClick={() => handleAction(approval.id, "deny")}
-                          disabled={isActing}
-                          className="button secondary sm"
-                        >
-                          {isActing ? "Processing..." : "Deny"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAction(approval.id, "approve")}
-                          disabled={isActing}
-                          className="button primary sm"
-                        >
-                          {isActing ? "Processing..." : "Approve action"}
-                        </button>
-                      </div>
-                    )}
+                <article key={approval.id} className="card space-y-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                    {renderStatusBadge(approval.status)}
+                    {approval.agentName && <span>Suggested by {approval.agentName}</span>}
+                    <span>{new Date(approval.createdAt).toLocaleDateString()}</span>
+                    {approval.status === "pending" && <span className="tag">{ttlRemaining}</span>}
                   </div>
-
-                  {/* Proposed Action Inspection Details */}
-                  {payload && (
-                    <div className="card" style={{ marginTop: 16, background: "var(--color-paper)" }}>
-                      <div className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2">
-                        Proposed system state change:
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" style={{ fontSize: 12 }}>
-                        <div>
-                          <span className="text-muted">Action type: </span>
-                          <span className="font-semibold">
-                            {payload.type ?? "state_change"}
-                          </span>
-                        </div>
-                        {payload.title && (
-                          <div className="sm:col-span-2">
-                            <span className="text-muted">Target item: </span>
-                            <span className="font-medium">{payload.title}</span>
-                          </div>
-                        )}
-                        {payload.priority && (
-                          <div>
-                            <span className="text-muted">Priority: </span>
-                            <span className="capitalize font-medium">{payload.priority}</span>
-                          </div>
-                        )}
-                        {payload.dueDate && (
-                          <div>
-                            <span className="text-muted">Due date: </span>
-                            <span className="font-medium">
-                              {new Date(payload.dueDate).toLocaleDateString()}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                  <h3 className="text-base font-bold break-words">{proposal.title}</h3>
+                  {proposal.effect && <p className="text-sm text-muted">{proposal.effect}</p>}
+                  {proposal.reason && (
+                    <p className="text-sm text-muted"><strong>Why it was suggested</strong> {proposal.reason}</p>
+                  )}
+                  {proposal.details.length > 0 && (
+                    <ul className="list-disc pl-5 text-sm text-muted">
+                      {proposal.details.map((detail, index) => <li key={index}>{detail}</li>)}
+                    </ul>
+                  )}
+                  {approval.status === "pending" && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleAction(approval.id, "approve")}
+                        disabled={actingId !== null}
+                        className="button primary sm"
+                      >
+                        {isActing ? "Processing…" : proposal.button}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAction(approval.id, "deny")}
+                        disabled={actingId !== null}
+                        className="button secondary sm"
+                      >
+                        Decline
+                      </button>
                     </div>
                   )}
 
@@ -453,7 +436,7 @@ export default function ApprovalsPage() {
                       Decision finalized on {new Date(approval.decidedAt).toLocaleString()}
                     </div>
                   )}
-                </div>
+                </article>
               );
             })
           )}

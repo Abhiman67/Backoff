@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { z } from "zod";
+import { linkGoogleAccount } from "./google-actions";
 
 const emptyForm = {
   name: "",
@@ -17,6 +18,8 @@ const profileResponse = z.object({
   user: z.object({
     name: z.string(),
     email: z.string(),
+    googleLinked: z.boolean(),
+    googleAvailable: z.boolean(),
     profile: z.object({
       institution: z.string().nullable(),
       degree: z.string().nullable(),
@@ -34,6 +37,7 @@ export default function ProfileSettings() {
   const [form, setForm] = useState(emptyForm);
   const [savedForm, setSavedForm] = useState<typeof emptyForm | null>(null);
   const [email, setEmail] = useState("");
+  const [google, setGoogle] = useState({ available: false, linked: false });
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [loadError, setLoadError] = useState(false);
 
@@ -66,6 +70,7 @@ export default function ProfileSettings() {
           careerTarget: user.profile?.careerTarget ?? "",
         };
         setEmail(user.email);
+        setGoogle({ available: user.googleAvailable, linked: user.googleLinked });
         setForm(profile);
         setSavedForm(profile);
       } catch {
@@ -99,6 +104,10 @@ export default function ProfileSettings() {
   if (loadError) return <main className="p-8" role="alert">Couldn’t load your profile. Refresh to try again.</main>;
   if (!savedForm) return <main className="p-8">Loading profile…</main>;
 
+  const linkResult = new URLSearchParams(window.location.search).get("google");
+  const linkError = linkResult === "email" ? "Choose the Google account that matches your VidyaSarthi email."
+    : linkResult === "conflict" ? "This Google account can’t be linked to this workspace." : "";
+
   return (
     <main style={{ maxWidth: 640, margin: "0 auto", paddingBottom: 40 }}>
       <div style={{ marginBottom: 16 }}>
@@ -111,6 +120,19 @@ export default function ProfileSettings() {
           <p>This context is shared with Study Coach and Career Scout to personalize their guidance.</p>
         </div>
       </div>
+
+      {google.available && (
+        <form action={linkGoogleAccount} className="panel mb-4">
+          <h2 className="text-base font-bold">Google sign-in</h2>
+          {google.linked ? <p className="text-sm text-muted">Google is linked to this account.</p> : (
+            <>
+              <p className="mb-3 text-sm text-muted">Use Google to sign in to this workspace.</p>
+              <button type="submit" className="button secondary sm">Link Google account</button>
+            </>
+          )}
+          {linkError && <p role="alert" className="mt-3 text-sm">{linkError}</p>}
+        </form>
+      )}
 
       <form onSubmit={save} onChange={() => {
         if (saveState === "error") setSaveState("idle");

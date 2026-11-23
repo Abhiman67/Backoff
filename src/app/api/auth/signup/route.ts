@@ -3,8 +3,12 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { signupSchema } from "@/lib/validations";
 import { rateLimitDistributed } from "@/lib/rate-limit";
+import { passwordSignupEnabled } from "@/lib/auth-options";
 
 export async function POST(req: Request) {
+  if (!passwordSignupEnabled()) {
+    return NextResponse.json({ error: "Continue with Google to create your account." }, { status: 403 });
+  }
   const ip = req.headers.get("x-forwarded-for") ?? "local";
   if (!(await rateLimitDistributed(`signup:${ip}`, 10))) {
     return NextResponse.json({ error: "Too many attempts" }, { status: 429 });

@@ -13,7 +13,10 @@ export async function POST(req: Request) {
   const body: unknown = await req.json().catch(() => null);
   const request = requestSchema.safeParse(body);
   if (request.success) {
-    const user = await db.user.findUnique({ where: { email: request.data.email.toLowerCase() }, select: { id: true } });
+    const user = await db.user.findFirst({
+      where: { email: request.data.email.toLowerCase(), passwordHash: { not: "" } },
+      select: { id: true },
+    });
     if (user) {
       await db.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
       const token = randomBytes(32).toString("hex");

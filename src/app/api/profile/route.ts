@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { profileSchema } from "@/lib/validations";
 import { handleApi, invalid } from "@/lib/api";
 import { objectStorage } from "@/lib/storage";
+import { googleSignInEnabled } from "@/lib/auth-options";
 
 export const GET = handleApi(async (_req, { userId }) => {
   const user = await db.user.findUnique({
@@ -11,12 +12,15 @@ export const GET = handleApi(async (_req, { userId }) => {
       id: true,
       name: true,
       email: true,
+      googleSubject: true,
       createdAt: true,
       updatedAt: true,
       profile: true,
     },
   });
-  return NextResponse.json({ user });
+  if (!user) return NextResponse.json({ user: null });
+  const { googleSubject, ...profile } = user;
+  return NextResponse.json({ user: { ...profile, googleLinked: Boolean(googleSubject), googleAvailable: googleSignInEnabled() } });
 });
 
 export const PATCH = handleApi(async (req, { userId }) => {

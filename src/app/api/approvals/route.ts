@@ -42,6 +42,11 @@ export const GET = handleApi(async (req, { userId: id }) => {
 
   const hasMore = approvals.length > take;
   if (hasMore) approvals.pop();
+  const agents = await db.agent.findMany({
+    where: { ownerId: id, id: { in: [...new Set(approvals.map((approval) => approval.agentId))] } },
+    select: { id: true, name: true },
+  });
+  const agentNames = new Map(agents.map((agent) => [agent.id, agent.name]));
 
   const stats = {
     pending: 0,
@@ -59,7 +64,10 @@ export const GET = handleApi(async (req, { userId: id }) => {
   }
 
   return NextResponse.json({
-    approvals,
+    approvals: approvals.map((approval) => ({
+      ...approval,
+      agentName: agentNames.get(approval.agentId) ?? null,
+    })),
     nextCursor: hasMore ? approvals.at(-1)?.id ?? null : null,
     stats,
     auditLogs,
