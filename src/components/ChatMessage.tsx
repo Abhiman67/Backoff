@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { Fragment, useState } from "react";
+import type { ReplySource } from "@/lib/reply-sources";
 
 type MessageProps = {
   role: "user" | "assistant";
@@ -8,33 +9,33 @@ type MessageProps = {
   agentIcon?: string;
   agentColor?: string;
   userTag?: string;
+  sources?: ReplySource[];
   onRetry?: () => void;
   onFeedback?: (vote: "up" | "down") => void;
 };
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
-  function handleCopy() {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("failed");
+    }
   }
 
   return (
     <div className="code-block-container">
       <div className="code-block-header">
-        <div className="code-lang-group">
-          <span className="code-dot" />
-          <span className="code-lang">{language || "plaintext"}</span>
-        </div>
+        <span className="code-lang">{language || "Plain text"}</span>
         <button
           onClick={handleCopy}
           className="code-copy-btn"
-          aria-label="Copy code to clipboard"
           type="button"
         >
-          {copied ? "✓ Copied" : "Copy code"}
+          <span aria-live="polite">{copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed. Retry" : "Copy code"}</span>
         </button>
       </div>
       <pre className="code-pre">
@@ -52,7 +53,7 @@ function renderFormattedText(text: string) {
     if (part.startsWith("```") && part.endsWith("```")) {
       const firstLineEnd = part.indexOf("\n");
       const lang = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() : "";
-      const code = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3) : part.slice(3, -3);
+      const code = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3).replace(/\r?\n$/, "") : part.slice(3, -3);
       return <CodeBlock key={index} language={lang} code={code} />;
     }
 
@@ -138,7 +139,7 @@ function renderFormattedText(text: string) {
     });
 
     flushList();
-    return <div key={index}>{elements}</div>;
+    return <Fragment key={index}>{elements}</Fragment>;
   });
 }
 
@@ -165,6 +166,7 @@ export function ChatMessage({
   agentName = "Agent",
   agentIcon = "✦",
   agentColor = "yellow",
+  sources,
   onRetry,
   onFeedback,
 }: MessageProps) {
@@ -206,7 +208,6 @@ export function ChatMessage({
     );
   }
 
-  // Claude-style assistant message: open, editorial canvas with clean typography and action bar
   return (
     <div className="claude-assistant-row">
       <div className="claude-assistant-header">
@@ -219,6 +220,13 @@ export function ChatMessage({
       <div className="claude-assistant-body">
         {content ? renderFormattedText(content) : <span className="streaming-cursor">…</span>}
       </div>
+
+      {!!sources?.length && (
+        <div className="agent-messenger-sources">
+          <b>Sources provided</b>
+          {sources.map((source) => <span key={source.id}>{source.label}</span>)}
+        </div>
+      )}
 
       {content && (
         <div className="claude-msg-actions">
@@ -243,7 +251,8 @@ export function ChatMessage({
           <button
             type="button"
             onClick={() => handleVote("up")}
-            className={`claude-action-btn ${voted === "up" ? "text-emerald-600 font-bold" : ""}`}
+            className="claude-action-btn"
+            aria-pressed={voted === "up"}
             title="Helpful response"
             aria-label="Thumbs up"
           >
@@ -252,7 +261,8 @@ export function ChatMessage({
           <button
             type="button"
             onClick={() => handleVote("down")}
-            className={`claude-action-btn ${voted === "down" ? "text-rose-600 font-bold" : ""}`}
+            className="claude-action-btn"
+            aria-pressed={voted === "down"}
             title="Not helpful"
             aria-label="Thumbs down"
           >

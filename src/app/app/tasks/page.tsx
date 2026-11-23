@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog, Dialog } from "@/components/Dialog";
 import Dropdown from "@/components/Dropdown";
@@ -11,6 +12,7 @@ type Task = {
   priority: string;
   projectId: string | null;
   subjectId: string | null;
+  externalProvider?: string | null;
 };
 
 type Project = { id: string; name: string };
@@ -31,11 +33,15 @@ function toLocalDateString(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getTaskDateKey(dueDate: string | null): string | null {
-  if (!dueDate) return null;
-  const d = new Date(dueDate);
-  if (isNaN(d.getTime())) return null;
-  return toLocalDateString(d);
+function plannerDate(task: Task): Date | null {
+  if (!task.dueDate) return null;
+  const date = new Date(task.dueDate);
+  if (Number.isNaN(date.getTime())) return null;
+  // The tasks API stores date-picker values at midnight UTC. Keep those calendar days local.
+  if (!task.externalProvider && date.toISOString().endsWith("T00:00:00.000Z")) {
+    return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  }
+  return date;
 }
 
 function TaskMetricIcon({ kind }: { kind: "focus" | "deadline" | "momentum" | "alert" }) {
@@ -89,6 +95,7 @@ export default function TasksPage() {
   const [schedulePriority, setSchedulePriority] = useState<"low" | "medium" | "high">("medium");
   const [scheduleProjectId, setScheduleProjectId] = useState("");
   const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
 
   // AI Study Plan Generator Modal
   const [showStudyPlanModal, setShowStudyPlanModal] = useState(false);
@@ -115,7 +122,6 @@ export default function TasksPage() {
 
   // Senior Product Designer: Academic Velocity Metrics
   const metrics = useMemo(() => {
-    const todayStr = toLocalDateString(new Date());
     let dueTodayCount = 0;
     let overdueCount = 0;
     let totalCompleted = 0;
@@ -127,8 +133,9 @@ export default function TasksPage() {
     for (const t of tasks) {
       if (t.status === "completed") {
         totalCompleted++;
-      } else if (t.dueDate) {
-        const taskDate = new Date(t.dueDate);
+      } else {
+        const taskDate = plannerDate(t);
+        if (!taskDate) continue;
         taskDate.setHours(0, 0, 0, 0);
         const diffDays = Math.round((taskDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         
@@ -172,8 +179,9 @@ export default function TasksPage() {
   const tasksByDate = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of filteredTasks) {
-      const key = getTaskDateKey(t.dueDate);
-      if (!key) continue;
+      const deadline = plannerDate(t);
+      if (!deadline) continue;
+      const key = toLocalDateString(deadline);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
     }
@@ -230,8 +238,9 @@ export default function TasksPage() {
     e.preventDefault();
     if (!scheduleTaskTitle.trim() || !scheduleForDate) return;
     setIsSubmittingSchedule(true);
+    setScheduleError("");
     try {
-      await fetch("/api/tasks", {
+      const response = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -241,11 +250,14 @@ export default function TasksPage() {
           projectId: scheduleProjectId || undefined,
         }),
       });
+      if (!response.ok) throw new Error("Could not schedule this task. Try again.");
       setScheduleForDate(null);
       setScheduleTaskTitle("");
       setSchedulePriority("medium");
       setScheduleProjectId("");
       load();
+    } catch {
+      setScheduleError("Could not schedule this task. Try again.");
     } finally {
       setIsSubmittingSchedule(false);
     }
@@ -448,8 +460,8 @@ export default function TasksPage() {
 
     return filteredTasks.filter((t) => {
       if (listView === "all") return true;
-      if (!t.dueDate) return listView === "today";
-      const d = new Date(t.dueDate);
+      const d = plannerDate(t);
+      if (!d) return listView === "today";
       if (listView === "today") return d.toDateString() === now.toDateString();
       return d >= startDay && d <= endWeek;
     });
@@ -725,6 +737,7 @@ export default function TasksPage() {
                 onClick={() => {
                   setScheduleForDate(cell.dateKey);
                   setScheduleTaskTitle("");
+                  setScheduleError("");
                 }}
               >
                 <div className="calendar-cell-top">
@@ -738,6 +751,7 @@ export default function TasksPage() {
                       e.stopPropagation();
                       setScheduleForDate(cell.dateKey);
                       setScheduleTaskTitle("");
+                      setScheduleError("");
                     }}
                     title={`Schedule task on ${cell.dateKey}`}
                     aria-label={`Schedule task on ${cell.dateKey}`}
@@ -828,6 +842,7 @@ export default function TasksPage() {
             {shownInList.map((t) => {
               const projectName = t.projectId ? projectMap.get(t.projectId) : null;
               const subjectName = t.subjectId ? subjectMap.get(t.subjectId) : null;
+              const deadline = plannerDate(t);
               return (
                 <div key={t.id} className="list-row" style={{ alignItems: "center" }}>
                   <button
@@ -844,7 +859,7 @@ export default function TasksPage() {
                       {t.title}
                     </b>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
-                      <small>{t.dueDate ? `Due ${new Date(t.dueDate).toLocaleDateString()}` : "No due date"}{t.status === "completed" ? " · Done" : ""}</small>
+                      <small>{deadline ? `Due ${deadline.toLocaleDateString()}` : "No due date"}{t.status === "completed" ? " · Done" : ""}</small>
                       {subjectName && (
                         <span className="tag" style={{ fontSize: 10, padding: "2px 6px" }}>
                           {subjectName}
@@ -861,6 +876,8 @@ export default function TasksPage() {
                   <span className="tag" style={PRI_STYLE[t.priority] ?? {}}>
                     {t.status === "completed" ? "Done" : t.priority}
                   </span>
+
+                  <Link href={`/app/assignments/${t.id}`} className="tag" aria-label={`Open workspace for ${t.title}`} onClick={(event) => event.stopPropagation()}>Workspace →</Link>
 
                   <button
                     type="button"
@@ -897,6 +914,7 @@ export default function TasksPage() {
       >
         {selectedTask && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Link href={`/app/assignments/${selectedTask.id}`} className="button primary" onClick={() => setSelectedTask(null)}>Open assignment workspace →</Link>
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--color-muted)", marginBottom: 4 }}>
                 Task Title
@@ -978,7 +996,7 @@ export default function TasksPage() {
 
               <input
                 type="date"
-                defaultValue={selectedTask.dueDate ? toLocalDateString(new Date(selectedTask.dueDate)) : ""}
+                defaultValue={selectedTask.dueDate ? toLocalDateString(plannerDate(selectedTask) ?? new Date(selectedTask.dueDate)) : ""}
                 onChange={(e) => updateTask(selectedTask, { dueDate: e.target.value || null })}
                 className="dialog-input"
                 style={{ marginBottom: 0 }}
@@ -1108,6 +1126,7 @@ export default function TasksPage() {
             </div>
           </div>
 
+          {scheduleError && <p role="alert" className="assignment-error">{scheduleError}</p>}
           <div className="dialog-actions">
             <button
               type="button"

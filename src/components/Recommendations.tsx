@@ -99,8 +99,8 @@ export function Recommendations({ compact = false }: { compact?: boolean }) {
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                <Link href={r.href} onClick={() => void act(r.key, "accepted")} className="tag" style={{ textDecoration: "none" }}>
+              <div className="recommendation-actions">
+                <Link href={r.href} onClick={() => void act(r.key, "accepted")} className="recommendation-action recommendation-action-primary">
                   Accept →
                 </Link>
                 <button
@@ -110,19 +110,18 @@ export function Recommendations({ compact = false }: { compact?: boolean }) {
                     setEditing(r.key);
                     setDraft({ title: r.title, body: r.body });
                   }}
-                  className="tag"
-                  style={{ cursor: "pointer" }}
+                  className="recommendation-action"
                 >
                   Edit
                 </button>
-                <button type="button" disabled={busy === r.key} onClick={() => void act(r.key, "dismissed", { snoozeDays: 3 })} className="tag" style={{ cursor: "pointer" }}>
+                <button type="button" disabled={busy === r.key} onClick={() => void act(r.key, "dismissed", { snoozeDays: 3 })} className="recommendation-action">
                   Snooze
                 </button>
-                <button type="button" disabled={busy === r.key} onClick={() => void act(r.key, "dismissed")} className="tag" style={{ cursor: "pointer" }}>
+                <button type="button" disabled={busy === r.key} onClick={() => void act(r.key, "dismissed")} className="recommendation-action recommendation-action-muted">
                   Dismiss
                 </button>
-                <button type="button" disabled={busy === r.key} onClick={() => void act(r.key, "dismissed", { feedback: "incorrect" })} className="tag" style={{ cursor: "pointer" }} title="Report as incorrect">
-                  Wrong?
+                <button type="button" disabled={busy === r.key} onClick={() => void act(r.key, "dismissed", { feedback: "incorrect" })} className="recommendation-action recommendation-action-feedback" title="Report as incorrect">
+                  Feedback
                 </button>
               </div>
             )}

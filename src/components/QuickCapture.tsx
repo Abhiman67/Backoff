@@ -32,24 +32,23 @@ export function QuickCapture({ onCaptured }: { onCaptured?: () => void }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+      <div className="quick-capture-mode-row">
         {(["task", "note"] as const).map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => setKind(k)}
             aria-pressed={kind === k}
-            className="tag"
-            style={{ cursor: "pointer", fontWeight: kind === k ? 800 : 400 }}
+            className={`quick-capture-mode${kind === k ? " is-active" : ""}`}
           >
             {k === "task" ? "Task" : "Note"}
           </button>
         ))}
-        <span style={{ fontSize: 11, color: "var(--color-muted)", alignSelf: "center" }}>
-          Files → <Link href="/app/files">upload</Link> · Goals → <Link href="/app/projects/new">new project</Link>
+        <span className="quick-capture-shortcuts">
+          Files <Link href="/app/files">Upload</Link><span aria-hidden="true">·</span> Goals <Link href="/app/projects/new">New project</Link>
         </span>
       </div>
-      <div style={{ display: "flex", gap: 6 }}>
+      <div className="quick-capture-form">
         <label htmlFor="quick-capture" className="sr-only">Quick capture</label>
         <input
           id="quick-capture"
@@ -60,9 +59,9 @@ export function QuickCapture({ onCaptured }: { onCaptured?: () => void }) {
           }}
           placeholder={kind === "task" ? "Capture a task…" : "Jot a note…"}
           disabled={busy}
-          style={{ flex: 1, fontSize: 13, padding: "8px 12px", borderRadius: 10, border: "1px solid var(--color-line)", background: "var(--color-card)" }}
+          className="quick-capture-input"
         />
-        <button type="button" onClick={() => void submit()} disabled={busy || !text.trim()} className="button" style={{ fontSize: 12, padding: "8px 14px" }}>
+        <button type="button" onClick={() => void submit()} disabled={busy || !text.trim()} className="button primary quick-capture-submit">
           {busy ? "Saving…" : "Capture"}
         </button>
       </div>

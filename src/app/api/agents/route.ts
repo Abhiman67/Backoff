@@ -20,8 +20,16 @@ export const GET = handleApi(async (_req, { userId: uid }) => {
     },
     orderBy: { createdAt: "asc" },
   });
+  const agentsWithContinuity = await Promise.all(agents.map(async (agent) => {
+    const latest = await db.conversation.findFirst({
+      where: { userId: uid, agentId: agent.id },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, title: true, updatedAt: true, messages: { where: { role: { in: ["user", "assistant"] } }, orderBy: { createdAt: "desc" }, take: 1, select: { content: true } } },
+    });
+    return { ...agent, latestConversation: latest ? { id: latest.id, title: latest.title, updatedAt: latest.updatedAt, preview: latest.messages[0]?.content.slice(0, 120) ?? "" } : null };
+  }));
   const safeTemplates = AGENT_TEMPLATES.map(({ systemPrompt: _, ...rest }) => rest);
-  return NextResponse.json({ agents, templates: safeTemplates });
+  return NextResponse.json({ agents: agentsWithContinuity, templates: safeTemplates });
 });
 
 export const POST = handleApi(async (req, { userId: uid }) => {

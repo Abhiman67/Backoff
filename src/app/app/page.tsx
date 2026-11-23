@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { ClassroomDashboard } from "@/components/ClassroomDashboard";
+import { FocusTask } from "@/components/FocusTask";
 import { QuickCapture } from "@/components/QuickCapture";
 import { Recommendations } from "@/components/Recommendations";
 
@@ -15,7 +16,7 @@ export default async function AppHome() {
   if (!user) redirect("/login");
   if (!user.profile?.onboardingDone) redirect("/onboarding");
 
-  const first = user.name.split(" ")[0];
+  const first = user.name.trim().split(/\s+/)[0];
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -32,15 +33,16 @@ export default async function AppHome() {
     db.auditEvent.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "desc" }, take: 8 }),
   ]);
 
-  const focus = tasks.filter((t) => t.status !== "completed").slice(0, 4);
   const now = Date.now(); // eslint-disable-line -- server component: evaluated once per request, not re-rendered
   const openTasks = tasks.filter((t) => t.status !== "completed" && t.status !== "cancelled");
+  const focus = openTasks.slice(0, 4);
   const overdue = tasks.filter((t) => t.dueDate && t.status !== "completed" && t.status !== "cancelled" && new Date(t.dueDate).getTime() < now).slice(0, 3);
   const deadlines = tasks.filter((t) => t.dueDate && t.status !== "completed").sort((a, b) => +new Date(a.dueDate!) - +new Date(b.dueDate!)).slice(0, 3);
   const interviews = apps.filter((a) => a.status === "interviewing").length;
   const soonApps = apps.filter((a) => ["applied", "interviewing"].includes(a.status)).length;
 
-  const studyCoach = agents.find((a) => a.template === "study-coach") || agents[0];
+  const studyCoach = agents.find((a) => a.template === "study-coach");
+  const planningAgent = studyCoach ?? agents[0];
   const classroomAccount = await db.integrationAccount.findUnique({
     where: { ownerId_provider: { ownerId: user.id, provider: "classroom" } },
   });
@@ -54,11 +56,11 @@ export default async function AppHome() {
     <>
       <div className="welcome student-home-intro">
         <div>
-          <p className="student-home-kicker">{greet}, {first}</p>
-          <h1>What are you moving forward today? <span>✦</span></h1>
-          {openTasks.length > 0 ? <p>You have <strong>{openTasks.length} open {openTasks.length === 1 ? "task" : "tasks"}</strong>. Start with one useful next step.</p> : <p>Ask about a course, project, deadline, or career goal and VidyaSarthi will help you make a plan.</p>}
+          <p className="student-home-greeting">{first ? `${greet}, ${first}` : greet}</p>
+          <h1>What’s your next step?</h1>
+          {openTasks.length > 0 ? <p>You have <strong>{openTasks.length} open {openTasks.length === 1 ? "task" : "tasks"}</strong>.</p> : <p>Ask about a course, project, deadline, or career goal and VidyaSarthi will help you make a plan.</p>}
         </div>
-        <div className="date-pill">{today} ▾</div>
+        <div className="date-pill">{today}</div>
       </div>
 
       {/* Study copilot ask box & Google Classroom integration */}
@@ -78,7 +80,7 @@ export default async function AppHome() {
           <h2 id="mission-heading">{overdue.length > 0 ? `Start with ${overdue[0].title}` : deadlines.length > 0 ? `Prepare for ${deadlines[0].title}` : projects.length > 0 ? `Move ${projects[0].name} forward` : notes.length > 0 ? `Continue ${notes[0].name.replace(/\.md$/, "")}` : "Tell VidyaSarthi what you want to finish"}</h2>
           <p>{overdue.length > 0 ? "This is overdue. VidyaSarthi can help you break it into a smaller recovery plan." : deadlines.length > 0 ? "Use your course context to make a focused plan before the deadline arrives." : notes.length > 0 ? "Turn your latest note into a quiz, revision session, or next action." : "Ask about an exam, assignment, project, or internship and turn it into an actionable plan."}</p>
         </div>
-        <Link href={studyCoach ? `/app/agents/${studyCoach.id}?q=${encodeURIComponent(overdue[0]?.title ?? deadlines[0]?.title ?? (notes[0] ? `Turn my note ${notes[0].name} into a study plan` : "Help me choose my next student priority"))}` : "/app/agents"} className="button primary-orange">Make a plan ↗</Link>
+        <Link href={planningAgent ? `/app/agents/${planningAgent.id}?q=${encodeURIComponent(overdue[0]?.title ?? deadlines[0]?.title ?? (notes[0] ? `Turn my note ${notes[0].name} into a study plan` : "Help me choose my next student priority"))}` : "/app/agents"} className="button primary-orange">Make a plan ↗</Link>
       </section>
 
       {pendingApprovals.length > 0 && (
@@ -148,12 +150,8 @@ export default async function AppHome() {
         <section className="panel">
           <div className="panel-head"><h2>Today&apos;s focus</h2><Link href="/app/tasks">View all tasks →</Link></div>
           {focus.length === 0 && <p style={{ fontSize: 13, color: "var(--color-muted)" }}>Nothing due. Add a task or ask Study Coach for a plan.</p>}
-          {focus.map((t) => (
-            <div key={t.id} className="focus">
-              <div className={`check${t.status === "completed" ? " done" : ""}`}>{t.status === "completed" ? "✓" : ""}</div>
-              <div className="focus-body"><b>{t.title}</b><p>{t.priority} priority{t.dueDate ? ` · Due ${new Date(t.dueDate).toLocaleDateString()}` : ""}</p></div>
-              <div className="focus-time">{t.status}</div>
-            </div>
+          {focus.map(({ id, title, priority, status, dueDate }) => (
+            <FocusTask key={id} id={id} title={title} priority={priority} status={status} dueLabel={dueDate?.toLocaleDateString() ?? null} />
           ))}
         </section>
 

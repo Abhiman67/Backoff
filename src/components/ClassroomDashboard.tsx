@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ClassroomCourse, ClassroomMaterial } from "@/lib/integrations/classroom";
+import type { ClassroomCourse, ClassroomMaterial } from "@/lib/integrations/classroom";
+import { AttachNotesDialog } from "@/components/AttachNotesDialog";
+import type { ChatAttachment } from "@/lib/chat-attachments";
 
 interface ClassroomDashboardProps {
   defaultCourses?: ClassroomCourse[];
@@ -19,6 +21,12 @@ export function ClassroomDashboard({
 }: ClassroomDashboardProps) {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const sending = useRef(false);
+  const pendingDraft = useRef<{ agentId: string; conversationId: string; message: string; attachmentIds: string[]; turnId: string } | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectedState, setConnectedState] = useState(isConnected);
   const [courses, setCourses] = useState<ClassroomCourse[]>(defaultCourses ?? []);
@@ -31,6 +39,15 @@ export function ClassroomDashboard({
   const [materialsMessage, setMaterialsMessage] = useState("");
   const [importingFile, setImportingFile] = useState("");
   const [importedFiles, setImportedFiles] = useState<string[]>([]);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!connectedState) return;
+    void fetch("/api/integrations/classroom", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((status) => { if (status?.lastSyncedAt) setLastSyncedAt(status.lastSyncedAt); })
+      .catch(() => undefined);
+  }, [connectedState]);
 
   useEffect(() => {
     if (!connectedState || defaultCourses) return;
@@ -51,6 +68,7 @@ export function ClassroomDashboard({
         const syncData = await syncResponse.json();
         if (!syncResponse.ok) throw new Error(syncData.error?.message ?? "Coursework could not be added to your plan.");
         if (!cancelled) setSyncMessage(`${syncData.synced ?? 0} coursework items synced to your plan.`);
+        if (!cancelled) setLastSyncedAt(new Date().toISOString());
         const materialsResponse = await fetch("/api/integrations/classroom/materials", { cache: "no-store" });
         const materialsData = await materialsResponse.json();
         if (!materialsResponse.ok) {
@@ -58,7 +76,7 @@ export function ClassroomDashboard({
         } else if (!cancelled) {
           setMaterials(materialsData.materials ?? []);
           setImportedFiles(materialsData.importedDriveFileIds ?? []);
-          setMaterialsMessage("");
+          setMaterialsMessage(materialsData.restrictedCourseCount ? `Google restricted standalone materials in ${materialsData.restrictedCourseCount} course(s). Assignment attachments may still appear here.` : "");
         }
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Courses could not be synced. Try reconnecting Classroom.");
@@ -99,6 +117,7 @@ export function ClassroomDashboard({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? "Coursework could not be synced.");
       setSyncMessage(`${data.synced ?? 0} coursework items synced to your plan. ${data.notified ?? 0} new notifications.`);
+      setLastSyncedAt(new Date().toISOString());
       router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Coursework could not be synced. Try again.");
@@ -114,17 +133,59 @@ export function ClassroomDashboard({
     { label: "Summarize my lecture notes", glyph: "↥" },
   ];
 
-  const handleSend = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!prompt.trim()) return;
-    // Hand the prompt to Study Coach via a real query param the chat reads.
-    const flags = new URLSearchParams({ q: prompt.trim() }).toString();
-    if (studyCoachId) {
-      router.push(`/app/agents/${studyCoachId}?${flags}`);
-    } else {
-      router.push(`/app/agents?${flags}`);
+  async function handleSend(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const message = prompt.trim();
+    if (!message || sending.current) return;
+    sending.current = true;
+    setIsSending(true);
+    setSendError("");
+    const attachmentIds = attachments.map(({ id }) => id);
+    try {
+      let draft = pendingDraft.current;
+      if (!draft || draft.message !== message || JSON.stringify(draft.attachmentIds) !== JSON.stringify(attachmentIds)) {
+        let agentId = studyCoachId;
+        if (!agentId) {
+          const setup = await fetch("/api/agents/ensure", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goals: ["Improve grades"] }),
+          });
+          if (!setup.ok) throw new Error("Could not set up Study Coach.");
+          const agents = await fetch("/api/agents", { cache: "no-store" });
+          if (!agents.ok) throw new Error("Could not open Study Coach.");
+          const data: { agents: { id: string; template: string }[] } = await agents.json();
+          agentId = data.agents.find((item) => item.template === "study-coach")?.id;
+          if (!agentId) throw new Error("Study Coach is unavailable. Try again.");
+        }
+        const response = await fetch("/api/conversations", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId }),
+        });
+        if (!response.ok) throw new Error("Could not start a conversation.");
+        const { conversation }: { conversation: { id: string } } = await response.json();
+        draft = { agentId, conversationId: conversation.id, message, attachmentIds, turnId: crypto.randomUUID() };
+        pendingDraft.current = draft;
+      }
+      const response = await fetch(`/api/conversations/${draft.conversationId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, attachmentIds, turnId: draft.turnId }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        const data: { error?: { message?: string } } = await response.json().catch(() => ({}));
+        throw new Error(data.error?.message ?? "Could not send your question.");
+      }
+      const handoff = new URLSearchParams({ agent: draft.agentId, conversation: draft.conversationId });
+      pendingDraft.current = null;
+      setPrompt("");
+      setAttachments([]);
+      router.push(`/app/agents?${handoff}`);
+    } catch (cause) {
+      setSendError(cause instanceof Error ? cause.message : "Could not send your question. Try again.");
+    } finally {
+      sending.current = false;
+      setIsSending(false);
     }
-  };
+  }
 
   const handleConnect = async () => {
     setIsConnecting(true);
@@ -186,6 +247,7 @@ export function ClassroomDashboard({
             key={chip.label}
             type="button"
             className="grok-chip"
+            disabled={isSending}
             onClick={() => setPrompt(chip.label)}
           >
             <span className="grok-chip-icon" aria-hidden="true">{chip.glyph}</span>
@@ -206,6 +268,8 @@ export function ClassroomDashboard({
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Tell VidyaSarthi what you&apos;re trying to move forward…"
               className="grok-omnibar-input"
+              maxLength={4000}
+              disabled={isSending}
             />
             <div className="grok-omnibar-actions">
               <button
@@ -224,7 +288,7 @@ export function ClassroomDashboard({
               </button>
               <button
                 type="submit"
-                disabled={!prompt.trim()}
+                disabled={!prompt.trim() || isSending}
                 className={`grok-send-btn ${prompt.trim() ? "active" : ""}`}
                 title="Ask VidyaSarthi"
                 aria-label="Ask VidyaSarthi"
@@ -242,17 +306,28 @@ export function ClassroomDashboard({
               <button
                 type="button"
                 className="grok-toggle-pill"
-                onClick={() => router.push("/app/files")}
+                disabled={isSending}
+                onClick={() => setShowAttachments(true)}
               >
                 <span aria-hidden="true">+</span>
                 <span>Attach notes</span>
               </button>
+              {attachments.map((file) => (
+                <button className="grok-toggle-pill active-green" type="button" key={file.id} disabled={isSending}
+                  aria-label={`Remove ${file.name}`} onClick={() => setAttachments((items) => items.filter((item) => item.id !== file.id))}>
+                  <span>{file.name}</span><span aria-hidden="true">×</span>
+                </button>
+              ))}
             </div>
             <span className="grok-disclaimer">
               Answers may be wrong. Verify against your course material.
             </span>
           </div>
         </form>
+        {isSending && <p className="omnibar-feedback" role="status">Opening your chat…</p>}
+        {sendError && <p className="omnibar-feedback files-error" role="alert">{sendError}</p>}
+        {showAttachments && <AttachNotesDialog selected={attachments} onClose={() => setShowAttachments(false)}
+          onApply={(files) => { setAttachments(files); setShowAttachments(false); }} />}
       </section>
 
       {/* 3. Courses — live connection or clearly-labeled demo */}
@@ -291,7 +366,7 @@ export function ClassroomDashboard({
               <div>
                 <h2>Your courses</h2>
                 <p className="grok-section-sub">
-                  Connection active · <span className="tag" style={{ fontSize: 10 }}>{isSyncing ? "Syncing…" : isDemo ? "Preview courses" : "Live read-only sync"}</span>
+                  Connection active · <span className="tag" style={{ fontSize: 10 }}>{isSyncing ? "Syncing…" : isDemo ? "Preview courses" : "Read-only sync"}</span>{lastSyncedAt && <> · Last synced {new Date(lastSyncedAt).toLocaleString()}</>}
                 </p>
               </div>
             </div>

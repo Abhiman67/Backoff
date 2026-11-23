@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Queue, type JobsOptions } from "bullmq";
 import { QUEUE_NAME, getRedisUrl } from "./redis";
 import { backoffMs, type JobType } from "./types";
@@ -31,5 +32,5 @@ export function bullOptions(maxRetries: number): JobsOptions {
 }
 
 export function bullJobId(type: JobType, idempotencyKey: string): string {
-  return `${type}:${idempotencyKey}`;
+  return `${type}-${createHash("sha256").update(idempotencyKey).digest("hex")}`;
 }

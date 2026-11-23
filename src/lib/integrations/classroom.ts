@@ -151,12 +151,19 @@ async function fetchCourseWorkMaterials(accessToken: string, courseId: string) {
   throw new Error(`Google Classroom returned too many material pages for course ${courseId}.`);
 }
 
-export async function listClassroomMaterials(accessToken: string): Promise<ClassroomMaterial[]> {
-  if (!accessToken || isMockToken(accessToken)) return [];
+export async function fetchClassroomMaterials(accessToken: string): Promise<{ materials: ClassroomMaterial[]; restrictedCourseCount: number }> {
+  if (!accessToken || isMockToken(accessToken)) return { materials: [], restrictedCourseCount: 0 };
   const courses = await fetchAllCourses(accessToken);
   const out: ClassroomMaterial[] = [];
+  let restrictedCourseCount = 0;
   for (const course of courses) {
-    const [work, materials] = await Promise.all([fetchCourseWork(accessToken, course.id), fetchCourseWorkMaterials(accessToken, course.id)]);
+    const work = await fetchCourseWork(accessToken, course.id);
+    let materials: Awaited<ReturnType<typeof fetchCourseWorkMaterials>> = [];
+    try { materials = await fetchCourseWorkMaterials(accessToken, course.id); }
+    catch (error) {
+      if (!(error instanceof ClassroomApiError) || error.httpStatus !== 403) throw error;
+      restrictedCourseCount += 1;
+    }
     for (const item of work) {
       for (const [index, raw] of (item.materials ?? []).entries()) {
         const normalized = normalizeMaterial(raw, { courseId: course.id, courseName: course.name, parentTitle: item.title, parentId: item.id }, index);
@@ -171,12 +178,17 @@ export async function listClassroomMaterials(accessToken: string): Promise<Class
     }
   }
   const seen = new Set<string>();
-  return out.filter((item) => {
+  const unique = out.filter((item) => {
     const key = item.driveFileId ? `drive:${item.driveFileId}` : `${item.kind}:${item.url ?? item.id}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+  return { materials: unique, restrictedCourseCount };
+}
+
+export async function listClassroomMaterials(accessToken: string): Promise<ClassroomMaterial[]> {
+  return (await fetchClassroomMaterials(accessToken)).materials;
 }
 
 async function fetchSubmissionStates(accessToken: string, courseId: string) {
@@ -219,6 +231,7 @@ export type ClassroomItem = {
   dueDate?: string;
   status: "pending" | "completed" | "due_soon" | "overdue";
   link?: string;
+  driveAttachments?: { driveFileId: string; title: string }[];
 };
 
 export function mockClassroomCourses(): ClassroomCourse[] {
@@ -356,7 +369,11 @@ export async function listClassroomCourses(accessToken: string): Promise<Classro
           const submitted = submissionState === "TURNED_IN" || submissionState === "RETURNED";
           const status = submitted || w.state === "DELETED" ? "completed" : dueDate && dueDate.getTime() < Date.now() ? "overdue" : dueDate && dueDate.getTime() < Date.now() + 3 * 86400000 ? "due_soon" : "pending";
           const type: ClassroomItem["type"] = w.workType === "QUIZ" ? "quiz" : w.workType === "PROJECT" ? "project" : "assignment";
-          return { id: w.id, title: w.title, type, dueDate: dueDate?.toISOString(), dueText: dueDate ? `Due ${dueDate.toLocaleDateString()}` : "No due date", status, link: w.alternateLink } satisfies ClassroomItem;
+          const driveAttachments = w.state === "DELETED" ? [] : (w.materials ?? []).flatMap((raw, index) => {
+            const material = normalizeMaterial(raw, { courseId: c.id, courseName: c.name, parentId: w.id, parentTitle: w.title }, index);
+            return material?.driveFileId ? [{ driveFileId: material.driveFileId, title: material.title }] : [];
+          });
+          return { id: w.id, title: w.title, type, driveAttachments, dueDate: dueDate?.toISOString(), dueText: dueDate ? `Due ${dueDate.toLocaleDateString()}` : "No due date", status, link: w.alternateLink } satisfies ClassroomItem;
         });
         return { id: c.id, name: c.name, section: c.section ?? `SEC-${idx + 1}`, instructor: "Faculty Instructor", colorScheme: colors[idx % colors.length], assignments } satisfies ClassroomCourse;
       }));

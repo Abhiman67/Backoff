@@ -1,5 +1,39 @@
 import JSZip from "jszip";
-import pako from "pako";
+import { createCanvas } from "@napi-rs/canvas";
+import { createWorker } from "tesseract.js";
+import type { PDFDocumentProxy } from "pdfjs-dist";
+import path from "node:path";
+
+let ocrWorker: ReturnType<typeof createWorker> | undefined;
+
+async function getOcrWorker() {
+  if (!ocrWorker) {
+    ocrWorker = createWorker("eng", 1, {
+      langPath: path.join(process.cwd(), "node_modules/@tesseract.js-data/eng/4.0.0"),
+      gzip: true,
+    }).catch((error: unknown) => {
+      ocrWorker = undefined;
+      throw error;
+    });
+  }
+  return ocrWorker;
+}
+
+async function extractPdfOcr(document: PDFDocumentProxy): Promise<string> {
+  const worker = await getOcrWorker();
+  const pages: string[] = [];
+  for (let pageNumber = 1; pageNumber <= Math.min(document.numPages, 30); pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    const context = canvas.getContext("2d");
+    // PDF.js accepts the Node canvas context at runtime; its type only declares DOM canvas contexts.
+    await page.render({ canvas: null, canvasContext: context as unknown as CanvasRenderingContext2D, viewport }).promise;
+    const { data } = await worker.recognize(await canvas.encode("png"));
+    if (data.text.trim()) pages.push(data.text.trim());
+  }
+  return pages.join("\n\n").slice(0, 20_000);
+}
 
 /**
  * Extracts raw textual content from an uploaded DOCX file (ZIP containing word/document.xml).
@@ -20,63 +54,29 @@ export async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
   }
 }
 
-/**
- * Extracts textual content from PDF buffers by inspecting text streams.
- */
+/** Extracts page text from a PDF without treating compressed PDF bytes as text. */
 export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
   try {
-    const bytes = new Uint8Array(buffer);
-    const latinText = new TextDecoder("latin1").decode(bytes);
-
-    const streams: string[] = [];
-    const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
-    let match;
-
-    while ((match = streamRegex.exec(latinText)) !== null) {
-      const rawStream = match[1];
-      try {
-        const streamBytes = new Uint8Array(rawStream.length);
-        for (let i = 0; i < rawStream.length; i++) {
-          streamBytes[i] = rawStream.charCodeAt(i);
-        }
-        const decompressed = pako.inflate(streamBytes, { to: "string" });
-        streams.push(decompressed);
-      } catch {
-        streams.push(rawStream);
-      }
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const loading = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+    try {
+      const document = await loading.promise;
+      const pages = await Promise.all(
+        Array.from({ length: document.numPages }, async (_, index) => {
+          const page = await document.getPage(index + 1);
+          const content = await page.getTextContent();
+          return content.items
+            .map((item) => ("str" in item ? item.str : ""))
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+        })
+      );
+      const extracted = pages.filter(Boolean).join("\n\n").slice(0, 20_000);
+      return extracted || await extractPdfOcr(document);
+    } finally {
+      await loading.destroy();
     }
-
-    const fullStreamText = streams.join("\n");
-    const textChunks: string[] = [];
-
-    // Extract text in parenthesis: (hello) Tj or '
-    const tjRegex = /\(([^)]+)\)\s*(?:Tj|'|")/g;
-    while ((match = tjRegex.exec(fullStreamText)) !== null) {
-      textChunks.push(match[1]);
-    }
-
-    // Extract text in array blocks: [(hello) 10 (world)] TJ
-    const arrayTjRegex = /\[(.*?)\]\s*TJ/g;
-    while ((match = arrayTjRegex.exec(fullStreamText)) !== null) {
-      const inner = match[1];
-      const innerRegex = /\(([^)]+)\)/g;
-      let innerMatch;
-      while ((innerMatch = innerRegex.exec(inner)) !== null) {
-        textChunks.push(innerMatch[1]);
-      }
-    }
-
-    if (textChunks.length > 5) {
-      return textChunks.join(" ").replace(/\s+/g, " ").trim();
-    }
-
-    // Fallback: extract continuous legible words (min 4 chars)
-    const legible = latinText.match(/[A-Za-z0-9 ,.?!'"\-:;]{4,}/g);
-    if (legible && legible.length > 5) {
-      return legible.filter((s) => !s.includes("obj") && !s.includes("endobj")).join(" ").slice(0, 10000);
-    }
-
-    return "";
   } catch (err) {
     if (process.env.NODE_ENV !== "production") console.warn("PDF parse error:", err);
     return "";

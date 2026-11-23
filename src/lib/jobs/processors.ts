@@ -1,6 +1,8 @@
-import { registerHandler } from "./queue";
+import { dispatchChatTurn, registerHandler } from "./queue";
+import { getJobMode } from "./redis";
 import { db } from "@/lib/db";
-import { chunkText, formatForPgvector } from "@/lib/chunking";
+import { chunkText } from "@/lib/chunking";
+import { embedTexts } from "@/lib/embeddings";
 import { extractDocxText, extractPdfText } from "@/lib/parser";
 import { objectStorage } from "@/lib/storage";
 import { logError, logInfo } from "@/lib/observability/logger";
@@ -17,7 +19,7 @@ registerHandler("usage.aggregate", async () => {
 registerHandler("file.extract", async (job) => {
   const { fileId, ownerId } = job.payload as { fileId: string; ownerId: string };
   const file = await db.file.findFirst({ where: { id: fileId, ownerId } });
-  if (!file) throw new Error("File not found");
+  if (!file || file.status === "deleted") return;
   try {
     await db.file.update({ where: { id: fileId }, data: { status: "processing" } });
     let bytes: Uint8Array | null = null;
@@ -40,7 +42,10 @@ registerHandler("file.extract", async (job) => {
     }
     await db.file.update({ where: { id: fileId }, data: { textContent: text } });
     const { enqueue } = await import("./queue");
-    await enqueue("file.chunk", { fileId, ownerId }, { idempotencyKey: `file.chunk:${fileId}` });
+    // A reprocess must also rerun chunking and embedding. Key downstream jobs
+    // to this extraction attempt so completed jobs from an earlier attempt do
+    // not leave the file stuck in `processing`.
+    await enqueue("file.chunk", { fileId, ownerId }, { idempotencyKey: `file.chunk:${fileId}:${job.idempotencyKey}` });
   } catch (err) {
     logError("file.extract.failed", { fileId });
     await db.file.update({ where: { id: fileId }, data: { status: "failed", failureReason: failReason("EXTRACT_FAILED") } });
@@ -52,7 +57,7 @@ registerHandler("file.extract", async (job) => {
 registerHandler("file.chunk", async (job) => {
   const { fileId, ownerId } = job.payload as { fileId: string; ownerId: string };
   const file = await db.file.findFirst({ where: { id: fileId, ownerId } });
-  if (!file) throw new Error("File not found");
+  if (!file || file.status === "deleted") return;
   const chunks = chunkText(file.textContent || "", 800, 120).slice(0, 50);
   if (!chunks.length) {
     await db.file.update({ where: { id: fileId }, data: { status: "failed", failureReason: failReason("EMPTY_TEXT") } });
@@ -64,10 +69,10 @@ registerHandler("file.chunk", async (job) => {
   }
   logInfo("file.chunked", { fileId, chunks: chunks.length });
   const { enqueue } = await import("./queue");
-  await enqueue("file.embed", { fileId, ownerId }, { idempotencyKey: `file.embed:${fileId}` });
+  await enqueue("file.embed", { fileId, ownerId }, { idempotencyKey: `file.embed:${fileId}:${job.idempotencyKey}` });
 });
 
-// file.embed: deterministic local embedding stub; validates pgvector payload, marks ready.
+// Keep lexical search available without an API key; persist real embeddings when configured.
 registerHandler("file.embed", async (job) => {
   const { fileId, ownerId } = job.payload as { fileId: string; ownerId: string };
   const chunks = await db.fileChunk.findMany({ where: { fileId, ownerId }, orderBy: { index: "asc" }, take: 50 });
@@ -75,20 +80,31 @@ registerHandler("file.embed", async (job) => {
     await db.file.update({ where: { id: fileId }, data: { status: "failed", failureReason: failReason("NO_CHUNKS") } });
     return;
   }
-  for (const c of chunks) {
-    const embedding = pseudoEmbedding(c.content);
-    formatForPgvector({ index: c.index, content: c.content, tokenEstimate: c.content.length / 4 }, embedding);
+  let embeddings: number[][] | null = null;
+  try {
+    embeddings = await embedTexts(chunks.map((chunk) => chunk.content));
+  } catch {
+    logError("file.embed.failed", { fileId });
+  }
+  if (embeddings) {
+    await db.$transaction(chunks.map((chunk, index) => db.fileChunk.update({
+      where: { id: chunk.id }, data: { embedding: embeddings[index] },
+    })));
   }
   await db.file.update({ where: { id: fileId }, data: { status: "ready", failureReason: null } });
   logInfo("file.ready", { fileId, chunks: chunks.length });
 });
 
-export function pseudoEmbedding(text: string, dims = 16): number[] {
-  const out = new Array<number>(dims).fill(0);
-  for (let i = 0; i < text.length; i++) out[i % dims] += text.charCodeAt(i) % 97;
-  const norm = Math.sqrt(out.reduce((a, b) => a + b * b, 0)) || 1;
-  return out.map((v) => Number((v / norm).toFixed(6)));
-}
+registerHandler("classroom.attachment", async ({ payload }) => {
+  if (typeof payload.attachmentId !== "string") throw new Error("Invalid Classroom attachment job");
+  const { processClassroomAttachment } = await import("@/lib/integrations/classroom-import");
+  await processClassroomAttachment(payload.attachmentId);
+});
+
+registerHandler("agent.chat", async (job) => {
+  const { executeChatTurn } = await import("@/lib/agents/chat-turn");
+  await executeChatTurn(job.id, job.payload);
+});
 
 registerHandler("agent.run", async (job) => {
   const { executeRun } = await import("@/lib/agents/orchestrator");
@@ -110,6 +126,15 @@ registerHandler("agent.retry", async (job) => {
 });
 
 registerHandler("responsibility.tick", async () => {
+  if (getJobMode() === "redis") {
+    const queued = await db.jobRecord.findMany({
+      where: { type: "agent.chat", status: "queued" },
+      orderBy: { updatedAt: "asc" }, take: 50,
+    });
+    for (const turn of queued) {
+      await dispatchChatTurn(turn).catch(() => logError("chat.dispatch.failed", { jobId: turn.id }));
+    }
+  }
   const { tickResponsibilities } = await import("@/lib/responsibilities");
   await tickResponsibilities();
 });

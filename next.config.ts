@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["@napi-rs/canvas", "tesseract.js", "pdfjs-dist"],
+  outputFileTracingExcludes: { "/*": ["./storage/**", "./prisma/*.db*"] },
   poweredByHeader: false,
   async headers() {
     return [{

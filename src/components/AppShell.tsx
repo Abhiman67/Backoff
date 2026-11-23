@@ -1,21 +1,20 @@
 import Link from "next/link";
 import { LogoMark } from "@/components/Logo";
 import { cookies } from "next/headers";
-import { auth, signOut } from "@/auth";
+import { signOut } from "@/auth";
 import Topbar from "./Topbar";
 import { SideNav, MobileNav } from "./SideNav";
 import SidebarUpgrade from "./SidebarUpgrade";
 
-function initials(name?: string | null, email?: string | null) {
-  if (name) return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-  return (email ?? "ST").slice(0, 2).toUpperCase();
-}
-
-export default async function AppShell({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  const name = session?.user?.name ?? "Student";
-  const email = session?.user?.email ?? "";
-  const tag = initials(session?.user?.name, email);
+export default async function AppShell({ children, account }: {
+  children: React.ReactNode;
+  account: { name: string; email: string };
+}) {
+  const { email } = account;
+  const name = account.name.trim() || email;
+  const tag = account.name.trim()
+    ? name.split(/\s+/).slice(0, 2).map((word) => Array.from(word)[0]).join("").toUpperCase()
+    : email.slice(0, 2).toUpperCase();
 
   const cookieStore = await cookies();
   const initialDismissed = cookieStore.get("backoff_upgrade_dismissed")?.value === "true";
@@ -24,16 +23,10 @@ export default async function AppShell({ children }: { children: React.ReactNode
     <div className="dash-layout">
       <aside className="sidebar">
         <div className="sidebar-main">
-          <Link href="/" className="brand">
+          <Link href="/app" className="brand">
             <LogoMark /> VidyaSarthi
           </Link>
-          <div className="label">Workspace</div>
           <SideNav />
-          <div className="workspace-list">
-            <div className="label">Your space</div>
-            <Link href="/app/projects"><i className="workspace-dot" /> Semester</Link>
-            <Link href="/app/projects"><i className="workspace-dot green" /> Major project</Link>
-          </div>
         </div>
 
         <div className="sidebar-footer">
@@ -69,7 +62,7 @@ export default async function AppShell({ children }: { children: React.ReactNode
         </div>
       </aside>
       <div className="main">
-        <Topbar tag={tag} />
+        <Topbar account={{ name, email, tag }} />
         {children}
       </div>
       <MobileNav />

@@ -158,6 +158,10 @@ model Task {
   externalId String?
   externalUrl String?
   externalStatus String?
+  assignmentSourceIds Json @default("[]")
+  classroomAttachments ClassroomAttachment[]
+  nextAction String @default("")
+  practiceQuestions Json @default("[]")
 
   @@index([projectId, status, dueDate])
   @@index([subjectId, status, dueDate])
@@ -191,6 +195,7 @@ model File {
   outgoingLinks NoteLink[]  @relation("NoteLinkFrom")
   incomingLinks NoteLink[]  @relation("NoteLinkTo")
   revisions     NoteRevision[]
+  classroomAttachments ClassroomAttachment[]
 
   @@index([ownerId, status])
   @@unique([ownerId, sourceProvider, sourceExternalId])
@@ -234,6 +239,7 @@ model FileChunk {
   owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   index     Int
   content   String
+  embedding Json?
   createdAt DateTime @default(now())
 
   @@unique([fileId, index])
@@ -249,11 +255,30 @@ model IntegrationAccount {
   accessTokenEncrypted  String?
   refreshTokenEncrypted String?
   expiresAt             DateTime?
+  lastSyncedAt           DateTime?
+  lastSyncError          String?
+  autoImportAttachments Boolean @default(false)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
   @@unique([ownerId, provider])
   @@index([ownerId])
+}
+
+model ClassroomAttachment {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  driveFileId String
+  title       String
+  fileId      String?
+  file        File?    @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  lastError   String?
+  attemptedAt DateTime?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([taskId, driveFileId])
+  @@index([fileId])
 }
 
 model JobRecord {
@@ -390,6 +415,7 @@ model Subject {
   owner     User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name      String
   code      String?
+  classroomCourseId String?
   examDate  DateTime?
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
@@ -400,6 +426,7 @@ model Subject {
   tasks     Task[]
 
   @@index([ownerId, updatedAt])
+  @@unique([ownerId, classroomCourseId])
 }
 
 model Topic {
@@ -456,6 +483,7 @@ model MasteryEvidence {
   score     Int?
   total     Int?
   note      String   @default("")
+  questionId String? @unique
   createdAt DateTime @default(now())
 
   @@index([topicId, createdAt])

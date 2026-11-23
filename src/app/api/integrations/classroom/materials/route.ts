@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleApi, HttpError } from "@/lib/api";
-import { listClassroomMaterials, describeClassroomFailure } from "@/lib/integrations/classroom";
+import { fetchClassroomMaterials, describeClassroomFailure } from "@/lib/integrations/classroom";
 import { getClassroomAccessToken } from "@/lib/integrations/classroom-token";
 import { CLASSROOM_MATERIALS_SCOPE } from "@/lib/integrations/scopes";
 import { db } from "@/lib/db";
@@ -20,9 +20,9 @@ export const GET = handleApi(async (_, { userId, requestId }) => {
     throw new HttpError("CLASSROOM_REAUTH_REQUIRED", 409, "Reconnect Google Classroom to grant read-only access to course materials.");
   }
   try {
-    const materials = await listClassroomMaterials(token);
+    const { materials, restrictedCourseCount } = await fetchClassroomMaterials(token);
     const importedDriveFileIds = (await db.file.findMany({ where: { ownerId: userId, sourceProvider: "classroom", sourceExternalId: { not: null } }, select: { sourceExternalId: true } })).flatMap((file) => file.sourceExternalId ? [file.sourceExternalId] : []);
-    return NextResponse.json({ materials, importedDriveFileIds }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ materials, importedDriveFileIds, restrictedCourseCount }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const failure = describeClassroomFailure(error);
     logError("classroom.materials.fetch_failed", { requestId, ...failure.details });

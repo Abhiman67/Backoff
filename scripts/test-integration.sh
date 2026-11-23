@@ -1,12 +1,14 @@
 #!/bin/sh
-# Milestone 4 §7.2 — agent workflow integration tests on an isolated temp DB.
+# Run DB-backed tests against isolated storage and the local SQLite migrations.
 set -e
 cd "$(dirname "$0")/.."
-export DATABASE_URL="file:./test-integration.db"
-cleanup() {
-  rm -f prisma/test-integration.db prisma/test-integration.db-journal
-}
-trap cleanup EXIT
-rm -f prisma/test-integration.db prisma/test-integration.db-journal
-bunx prisma db push --skip-generate > /dev/null
+
+test_dir=$(mktemp -d "${TMPDIR:-/tmp}/vidyasarthi-integration.XXXXXX")
+trap 'rm -rf "$test_dir"' EXIT
+export DATABASE_URL="file:$test_dir/test.db"
+export LOCAL_STORAGE_DIR="$test_dir/storage"
+
+for migration in prisma/migrations/*/migration.sql; do
+  sqlite3 -bail "$test_dir/test.db" < "$migration"
+done
 bunx vitest run --config vitest.integration.config.ts

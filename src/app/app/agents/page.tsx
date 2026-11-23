@@ -1,96 +1,683 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { ConfirmDialog, PromptDialog } from "@/components/Dialog";
+import { DEFAULT_CONVERSATION_TITLE, MAX_CONVERSATION_TITLE_LENGTH } from "@/lib/conversation-title";
+import { RunPanel } from "@/components/RunPanel";
+import { ApprovalCard } from "@/components/ApprovalCard";
+import {
+  CLASSROOM_UPDATE_ROLE, STUDY_PLAN_ROLE, classroomUpdateSchema,
+  readThreadData, studyCoachThreadId, studyPlanSchema, type ClassroomUpdate,
+} from "@/lib/study-coach-thread";
+import type { ReplySource } from "@/lib/reply-sources";
+import { ChatMessage } from "@/components/ChatMessage";
 
 type Agent = { id: string; name: string; role: string; description: string; category: string; template: string };
+type Conversation = { id: string; title: string; projectId: string | null; updatedAt: string };
+type Message = { id?: string; role: "user" | "assistant" | typeof CLASSROOM_UPDATE_ROLE | typeof STUDY_PLAN_ROLE; content: string; createdAt?: string; sources?: ReplySource[] };
+type Approval = { id: string; status: string };
+type Turn = { id: string; status: string };
+type Thread = { conversation: Conversation & { agentId: string; messages: Message[] }; approvals: Approval[]; turn: Turn | null };
+type TurnRequest =
+  | { kind: "chat"; message: string; assignmentId?: string; turnId: string }
+  | { kind: "study_plan"; assignmentId: string; turnId: string }
+  | { kind: "retry"; turnId: string };
 
-const META: Record<string, [string, string]> = {
-  "study-coach": ["◒", "yellow"],
-  "project-guide": ["⌘", "blue"],
-  "career-scout": ["↗", "green"],
-  "writing-buddy": ["✎", "lav"],
-  "code-mentor": ["◉", "peach"],
-  "interview-coach": ["☼", "peri"],
-};
+const CLASSROOM_CHANGE_LABELS = {
+  new: "New assignment",
+  deadline: "Deadline changed",
+  due_soon: "Due soon",
+  overdue: "Overdue",
+  completed: "Marked complete in Classroom",
+  updated: "Assignment updated",
+} satisfies Record<NonNullable<ClassroomUpdate["change"]>, string>;
+const META: Record<string, [string, string]> = { "study-coach": ["◒", "yellow"], "project-guide": ["⌘", "blue"], "career-scout": ["↗", "green"], "writing-buddy": ["✎", "lav"], "code-mentor": ["◉", "peach"], "interview-coach": ["☼", "peri"] };
+
+const threadDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
+async function fetchHistory(agentId: string, signal?: AbortSignal) {
+  const response = await fetch(`/api/agents/${agentId}/conversations`, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error("Could not load conversations.");
+  const data: { conversations: Conversation[] } = await response.json();
+  return data.conversations;
+}
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [filter, setFilter] = useState("All");
-  const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("");
-  const load = () => fetch("/api/agents").then((r) => r.json()).then((d) => setAgents(d.agents ?? []));
-  useEffect(() => {
-    fetch("/api/agents/ensure", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).then(load);
+  const [agentId, setAgentId] = useState("");
+  const [histories, setHistories] = useState<Partial<Record<string, Conversation[]>>>({});
+  const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState(true);
+  const [showAssistants, setShowAssistants] = useState(false);
+  const conversations = histories[agentId] ?? [];
+  const [conversationId, setConversationId] = useState("");
+  const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
+  const [renameError, setRenameError] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [hasUnreadClassroomUpdate, setHasUnreadClassroomUpdate] = useState(false);
+  const [assignment, setAssignment] = useState<ClassroomUpdate | null>(null);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [loadingThread, setLoadingThread] = useState(true);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [turn, setTurn] = useState<Turn | null>(null);
+  const pending = turn !== null && ["queued", "running", "retrying"].includes(turn.status);
+  const [error, setError] = useState("");
+  const bottom = useRef<HTMLDivElement>(null);
+  const sending = useRef(false);
+  const uncertainRequest = useRef<{ conversationId: string; request: TurnRequest } | null>(null);
+  const agent = agents.find((item) => item.id === agentId);
+  const activeConversation = conversations.find((item) => item.id === conversationId);
+  const coach = agents.find((item) => item.template === "study-coach");
+  const classroomThreadId = coach ? studyCoachThreadId(coach.id) : "";
+  const latestVisibleClassroomUpdate = messages.reduce((latest, message) =>
+    message.role === CLASSROOM_UPDATE_ROLE && message.createdAt && message.createdAt > latest
+      ? message.createdAt : latest, "");
+  const [icon, color] = META[agent?.template ?? ""] ?? ["✦", "yellow"];
+  const query = search.trim().toLocaleLowerCase();
+  const visibleAgents = agents.filter((item) => !query || item.name.toLocaleLowerCase().includes(query)
+    || histories[item.id]?.some((thread) => thread.title.toLocaleLowerCase().includes(query)));
+
+  const selection = useRef(0);
+
+  const updateHistory = useCallback((id: string, update: (items: Conversation[]) => Conversation[]) => {
+    setHistories((current) => ({ ...current, [id]: update(current[id] ?? []) }));
   }, []);
-  async function createCustom() {
-    if (!name.trim() || !role.trim()) return;
-    const res = await fetch("/api/agents", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ template: "custom", name, role, description: role, category: "Custom" }),
+
+  const applyThread = useCallback((data: Thread) => {
+    setMessages((current) => JSON.stringify(current) === JSON.stringify(data.conversation.messages) ? current : data.conversation.messages);
+    setApprovals((current) => JSON.stringify(current) === JSON.stringify(data.approvals) ? current : data.approvals);
+    setTurn(data.turn);
+    updateHistory(data.conversation.agentId, (items) => items.map((item) => item.id === data.conversation.id
+      ? { ...item, title: data.conversation.title, updatedAt: data.conversation.updatedAt }
+      : item));
+  }, [updateHistory]);
+
+  const selectConversation = useCallback(async (id: string, version = ++selection.current) => {
+    setConversationId(id);
+    setMessages([]);
+    setTurn(null);
+    setAssignment(null);
+    setApprovals([]);
+    setInput("");
+    setError("");
+    setLoadingThread(true);
+    try {
+      const response = await fetch(`/api/conversations/${id}?latest=1&turn=1`);
+      if (!response.ok) throw new Error();
+      const data: Thread = await response.json();
+      if (version !== selection.current) return;
+      applyThread(data);
+    } catch {
+      if (version === selection.current) setError("Could not open this conversation.");
+    } finally {
+      if (version === selection.current) setLoadingThread(false);
+    }
+  }, [applyThread]);
+
+  const loadConversations = useCallback(async (id: string, preferred?: string) => {
+    const version = ++selection.current;
+    setLoadingThread(true);
+    setConversationId("");
+    setMessages([]);
+    setTurn(null);
+    setAssignment(null);
+    setApprovals([]);
+    setInput("");
+    setError("");
+    try {
+      const threads = await fetchHistory(id);
+      if (version !== selection.current) return;
+      updateHistory(id, () => threads);
+      const chosen = threads.find((item) => item.id === preferred)
+        ?? threads.find((item) => item.id === studyCoachThreadId(id)) ?? threads[0];
+      if (chosen) await selectConversation(chosen.id, version);
+    } catch {
+      if (version === selection.current) setError("Could not load conversations.");
+    } finally {
+      if (version === selection.current) setLoadingThread(false);
+    }
+  }, [selectConversation, updateHistory]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      await fetch("/api/agents/ensure", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const response = await fetch("/api/agents");
+      if (!response.ok) throw new Error("Could not load your agents.");
+      const data: { agents: Agent[] } = await response.json();
+      if (controller.signal.aborted) return;
+      const list = data.agents;
+      setAgents(list);
+      let previousAgent: string | null = null;
+      let previousThread: string | null = null;
+      try {
+        previousAgent = sessionStorage.getItem("my-agents:agent");
+        previousThread = sessionStorage.getItem("my-agents:thread");
+      } catch {}
+      const handoff = new URLSearchParams(window.location.search);
+      const selected = list.find((item) => item.id === handoff.get("agent"))
+        ?? list.find((item: Agent) => item.id === previousAgent)
+        ?? list.find((item: Agent) => item.template === "study-coach") ?? list[0];
+      if (selected) {
+        for (const item of list) {
+          if (item.id === selected.id) continue;
+          void fetchHistory(item.id, controller.signal).then((threads) => {
+            if (!controller.signal.aborted) {
+              setHistories((current) => current[item.id] ? current : { ...current, [item.id]: threads });
+            }
+          }).catch(() => {});
+        }
+        setAgentId(selected.id);
+        const requestedThread = handoff.get("agent") === selected.id ? handoff.get("conversation") : null;
+        await loadConversations(selected.id, requestedThread ?? (selected.id === previousAgent ? previousThread ?? undefined : undefined));
+        if (requestedThread) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("conversation");
+          url.searchParams.delete("agent");
+          window.history.replaceState(null, "", url);
+        }
+      } else {
+        setLoadingThread(false);
+      }
+    })().catch(() => {
+      if (controller.signal.aborted) return;
+      setError("Could not load your agents. Refresh to try again.");
+      setLoadingThread(false);
     });
-    if (res.ok) {
-      setName(""); setRole(""); setShowForm(false); load();
+    return () => controller.abort();
+  }, [loadConversations]);
+
+  useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, pending]);
+
+  useEffect(() => {
+    if (!agentId || !conversationId) return;
+    try {
+      sessionStorage.setItem("my-agents:agent", agentId);
+      sessionStorage.setItem("my-agents:thread", conversationId);
+    } catch {}
+  }, [agentId, conversationId]);
+
+  useEffect(() => {
+    if (!conversationId || busy || loadingThread) return;
+    const controller = new AbortController();
+    let refreshing = false;
+    async function refreshThread() {
+      if (refreshing || document.visibilityState === "hidden") return;
+      refreshing = true;
+      try {
+        const response = await fetch(`/api/conversations/${conversationId}?latest=1&turn=1`, { signal: controller.signal });
+        if (!response.ok) return;
+        const data: Thread = await response.json();
+        if (!controller.signal.aborted) applyThread(data);
+      } catch {
+        // The next refresh picks up the saved state.
+      } finally {
+        refreshing = false;
+      }
+    }
+    const timer = window.setInterval(() => void refreshThread(), pending ? 1_500 : 30_000);
+    document.addEventListener("visibilitychange", refreshThread);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshThread);
+    };
+  }, [conversationId, busy, loadingThread, pending, applyThread]);
+
+  useEffect(() => {
+    if (!classroomThreadId) return;
+    const controller = new AbortController();
+    const storageKey = `classroom-seen:${classroomThreadId}`;
+    let refreshing = false;
+    async function refreshUnread() {
+      if (document.visibilityState !== "visible" || refreshing) return;
+      if (conversationId === classroomThreadId) {
+        if (latestVisibleClassroomUpdate) {
+          try {
+            const seen = localStorage.getItem(storageKey) ?? "";
+            if (latestVisibleClassroomUpdate > seen) localStorage.setItem(storageKey, latestVisibleClassroomUpdate);
+          } catch {}
+          setHasUnreadClassroomUpdate(false);
+        }
+        return;
+      }
+      refreshing = true;
+      try {
+        const response = await fetch(`/api/conversations/${classroomThreadId}?classroomActivity=1`, { signal: controller.signal });
+        if (!response.ok) return;
+        const data: { updatedAt: string | null } = await response.json();
+        if (controller.signal.aborted) return;
+        let seen = "";
+        try { seen = localStorage.getItem(storageKey) ?? ""; } catch {}
+        setHasUnreadClassroomUpdate(Boolean(data.updatedAt && data.updatedAt > seen));
+      } catch {
+        // Retry on the next refresh.
+      } finally {
+        refreshing = false;
+      }
+    }
+    void refreshUnread();
+    const timer = window.setInterval(() => void refreshUnread(), 30_000);
+    document.addEventListener("visibilitychange", refreshUnread);
+    window.addEventListener("storage", refreshUnread);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshUnread);
+      window.removeEventListener("storage", refreshUnread);
+    };
+  }, [classroomThreadId, conversationId, latestVisibleClassroomUpdate]);
+
+  async function chooseAgent(id: string) {
+    if (id === agentId && !query) {
+      setExpanded(!expanded);
+      return;
+    }
+    setSearch("");
+    setExpanded(true);
+    if (id === agentId) return;
+    setAgentId(id);
+    await loadConversations(id);
+  }
+
+  function openConversation(id: string, threadId: string) {
+    setExpanded(true);
+    setAgentId(id);
+    setShowAssistants(false);
+    void selectConversation(threadId);
+  }
+
+  async function newConversation(id: string) {
+    if (busy || loadingThread) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: id }),
+      });
+      if (!response.ok) throw new Error();
+      const { conversation }: { conversation: Conversation } = await response.json();
+      updateHistory(id, (items) => [conversation, ...items]);
+      setAgentId(id);
+      setExpanded(true);
+      setShowAssistants(false);
+      setSearch("");
+      setConversationId(conversation.id);
+      setMessages([]);
+      setTurn(null);
+      setAssignment(null);
+      setApprovals([]);
+      setInput("");
+    } catch {
+      setError("Could not start a new conversation.");
+    } finally {
+      setBusy(false);
     }
   }
-  const cats = ["All", "Academic", "Projects", "Career", "Productivity", "Custom"];
-  const shown = agents.filter((a) => filter === "All" || a.category === filter);
-  return (
-    <>
-      <div className="page-head">
-        <div>
-          <h1>Your AI team</h1>
-          <p>Specialists that remember your goals and help you keep moving.</p>
-        </div>
-        <button className="button primary" onClick={() => setShowForm(!showForm)}>Create custom agent</button>
+
+  async function renameConversation(title: string) {
+    if (!renameTarget || renaming) return;
+    if (title === DEFAULT_CONVERSATION_TITLE) {
+      setRenameError("Choose a title that describes this conversation.");
+      return;
+    }
+    setRenaming(true);
+    setRenameError("");
+    try {
+      const response = await fetch(`/api/conversations/${renameTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (!response.ok) throw new Error();
+      const { conversation }: { conversation: Conversation } = await response.json();
+      updateHistory(agentId, (items) => items.map((item) => item.id === conversation.id ? conversation : item));
+      setRenameTarget(null);
+    } catch {
+      setRenameError("Could not save the title. Try again.");
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function deleteConversation() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch(`/api/conversations/${deleteTarget.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error();
+      const remaining = conversations.filter((item) => item.id !== deleteTarget.id);
+      updateHistory(agentId, () => remaining);
+      setDeleteTarget(null);
+      if (conversationId !== deleteTarget.id) return;
+      const next = remaining.find((item) => item.id === studyCoachThreadId(agentId)) ?? remaining[0];
+      if (next) {
+        await selectConversation(next.id);
+      } else {
+        setConversationId("");
+        setMessages([]);
+        setTurn(null);
+        setAssignment(null);
+        setApprovals([]);
+        setInput("");
+        setError("");
+      }
+    } catch {
+      setDeleteError("Could not delete this conversation. Try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function submitTurn(id: string, request: TurnRequest) {
+    const { turnId: _turnId, ...intent } = request;
+    const prior = uncertainRequest.current;
+    if (prior?.conversationId === id && request.kind !== "retry") {
+      const { turnId: _priorId, ...priorIntent } = prior.request;
+      if (JSON.stringify(priorIntent) === JSON.stringify(intent)) request = prior.request;
+    }
+    uncertainRequest.current = { conversationId: id, request };
+    const response = await fetch(`/api/conversations/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      if (response.status < 500) uncertainRequest.current = null;
+      const data: { error?: { message?: string } } = await response.json().catch(() => ({}));
+      throw new Error(data.error?.message ?? "Could not send your request. Try again.");
+    }
+    uncertainRequest.current = null;
+    const data: { turn: Turn } = await response.json();
+    setTurn(data.turn);
+    await fetch(`/api/conversations/${id}?latest=1&turn=1`, { signal: AbortSignal.timeout(5_000) })
+      .then(async (result) => { if (result.ok) applyThread(await result.json()); })
+      .catch(() => undefined);
+  }
+
+  async function send(text?: string) {
+    const prompt = (text ?? input).trim();
+    if (!prompt || busy || pending || sending.current || loadingThread || !agent) return;
+    sending.current = true;
+    setBusy(true);
+    setError("");
+    let id = conversationId;
+    try {
+      if (!id) {
+        const response = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentId: agent.id }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!response.ok) throw new Error("Could not start a conversation.");
+        const { conversation }: { conversation: Conversation } = await response.json();
+        id = conversation.id;
+        setConversationId(id);
+        updateHistory(agent.id, (items) => [conversation, ...items]);
+      }
+      await submitTurn(id, { kind: "chat", message: prompt, assignmentId: assignment?.assignmentId, turnId: crypto.randomUUID() });
+      if (text === undefined) setInput((draft) => draft.trim() === prompt ? "" : draft);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not send your message.");
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function runThreadAction(request: TurnRequest) {
+    if (!conversationId || busy || pending || sending.current || loadingThread) return;
+    sending.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await submitTurn(conversationId, request);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not finish your request.");
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  }
+
+  function renderMessage(message: Message, index: number) {
+    const key = message.id ?? `${conversationId}-${index}`;
+    if (message.role === CLASSROOM_UPDATE_ROLE) {
+      const update = readThreadData(classroomUpdateSchema, message.content);
+      if (!update) return null;
+      const due = update.dueDate ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(new Date(update.dueDate)) : "No due date";
+      return (
+        <article className="study-thread-card" key={key}>
+          <small>{update.change ? `Study Coach · ${CLASSROOM_CHANGE_LABELS[update.change]}` : "Google Classroom"} · {due}</small>
+          <strong>{update.title}</strong>
+          {update.lastQuestion && <p className="study-thread-follow-up">You last asked about this assignment: “{update.lastQuestion}”</p>}
+          <div className="study-thread-actions">
+            {update.status !== "completed" && (
+              <button type="button" className="file-action" disabled={busy || loadingThread}
+                aria-pressed={assignment?.assignmentId === update.assignmentId}
+                onClick={() => {
+                  setAssignment(update);
+                  if (update.lastQuestion) setInput((draft) => draft || `Help me pick up where I left off on this assignment. I last asked: ${update.lastQuestion}`);
+                }}>{update.lastQuestion ? "Continue studying" : "Study this assignment"}</button>
+            )}
+            <Link href={`/app/assignments/${update.assignmentId}`}>View assignment and sources ↗</Link>
+          </div>
+        </article>
+      );
+    }
+    if (message.role === STUDY_PLAN_ROLE) {
+      const plan = readThreadData(studyPlanSchema, message.content);
+      if (!plan) return null;
+      const approval = approvals.find((item) => item.id === plan.approvalId);
+      return (
+        <article className="study-thread-card" key={key}>
+          <strong>Study plan for {plan.title}</strong>
+          <ol>{plan.sessions.map((session) => <li key={session}>{session}</li>)}</ol>
+          {approval && <ApprovalCard id={approval.id} title="Add these sessions to your planner"
+            description="Approval creates the three tasks shown above."
+            initialStatus={approval.status}
+            onDecided={(status) => setApprovals((items) => items.map((item) => item.id === approval.id ? { ...item, status } : item))} />}
+        </article>
+      );
+    }
+    if (!message.content) return null;
+    return <ChatMessage key={key} role={message.role} content={message.content} agentName={agent?.name}
+      agentIcon={icon} agentColor={color} sources={message.sources} />;
+  }
+
+  const prompts = agent?.template === "study-coach"
+    ? ["Explain a concept from my course materials.", "Quiz me on my coursework, one question at a time.", "Make a study plan using my upcoming deadlines."]
+    : agent?.template === "project-guide"
+      ? ["Help me choose the next project milestone.", "Review my project scope and flag risks."]
+      : ["Help me decide what to focus on next.", "Pick up where we left off."];
+
+  return <section className="agent-messenger" aria-label="Agent workspace" data-show-assistants={showAssistants}>
+    <aside className="agent-messenger-sidebar" id="agent-assistants">
+      <div className="agent-messenger-tools">
+        <Link href="/app" className="agent-messenger-back">← Overview</Link>
+        <button className="agent-messenger-mobile-toggle file-action" type="button" onClick={() => setShowAssistants(false)}>Close</button>
       </div>
-      {showForm && (
-        <div className="card form-card" id="create" style={{ marginBottom: 15 }}>
-          <h3>Create your own</h3>
-          <p>Build a focused agent with your own role, tone and context. Custom instructions cannot override safety rules.</p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <label htmlFor="custom-name" className="sr-only">Agent name</label>
-            <input id="custom-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" aria-label="Agent name" className="qa-control" style={{ flex: 1 }} />
-            <label htmlFor="custom-role" className="sr-only">Agent role</label>
-            <input id="custom-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Role" aria-label="Agent role" className="qa-control" style={{ flex: 1 }} />
-            <button onClick={createCustom} className="button primary sm">Create</button>
+      <label className="agent-messenger-search">
+        <span aria-hidden="true">⌕</span>
+        <input type="search" aria-label="Search assistants and recent conversations" placeholder="Search conversations"
+          value={search} onChange={(event) => setSearch(event.target.value)} />
+      </label>
+      <h2 className="agent-messenger-section-label">Assistants</h2>
+      <nav className="agent-messenger-roster" aria-label="Assistants and conversations">
+        {visibleAgents.map((item) => {
+          const [itemIcon, itemColor] = META[item.template] ?? ["✦", "yellow"];
+          const active = item.id === agentId;
+          const open = query ? true : active && expanded;
+          const unread = item.id === coach?.id && hasUnreadClassroomUpdate;
+          const threads = (histories[item.id] ?? []).filter((thread) =>
+            !query || item.name.toLocaleLowerCase().includes(query) || thread.title.toLocaleLowerCase().includes(query));
+          return (
+            <div key={item.id}>
+              <div className={`agent-messenger-agent-row${active ? " active" : ""}`}>
+                <button type="button" disabled={busy || renaming || deleting}
+                  aria-label={unread ? `${item.name}, new Classroom update` : item.name}
+                  aria-expanded={open} aria-controls={open ? `history-${item.id}` : undefined}
+                  onClick={() => void chooseAgent(item.id)} className="agent-messenger-agent">
+                  <span className={`agent-icon ${itemColor}`} aria-hidden="true">{itemIcon}</span>
+                  <span className="agent-messenger-agent-copy"><b>{item.name}</b><small>{item.role}</small></span>
+                  {unread && <span className="agent-messenger-unread" aria-hidden="true" />}
+                  <span className="agent-messenger-chevron" aria-hidden="true">{open ? "⌄" : "›"}</span>
+                </button>
+                <button className="agent-messenger-new" type="button" disabled={busy || loadingThread || renaming || deleting}
+                  aria-label={`New conversation with ${item.name}`} title={`New conversation with ${item.name}`}
+                  onClick={() => void newConversation(item.id)}>+</button>
+              </div>
+              {open && (
+                <div id={`history-${item.id}`} className="agent-messenger-conversations">
+                  {threads.map((thread) => (
+                    <button type="button" key={thread.id} disabled={busy || renaming || deleting}
+                      aria-current={thread.id === conversationId ? "true" : undefined}
+                      onClick={() => openConversation(item.id, thread.id)}
+                      className={`agent-messenger-conversation${thread.id === conversationId ? " active" : ""}`}>
+                      <b title={thread.title}>{thread.title}</b>
+                      <small>{thread.id === classroomThreadId && unread ? "New update" : threadDate.format(new Date(thread.updatedAt))}</small>
+                    </button>
+                  ))}
+                  {threads.length === 0 && <p className="agent-messenger-empty">
+                    {query ? "No matching conversations" : loadingThread ? "Loading conversations…" : "No conversations yet"}
+                  </p>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {query && visibleAgents.length === 0 && <p className="agent-messenger-empty" role="status">No matches found.</p>}
+      </nav>
+    </aside>
+    <main className="agent-messenger-main">
+      <header className="agent-messenger-header">
+        <button className="agent-messenger-mobile-toggle file-action" type="button"
+          aria-expanded={showAssistants} aria-controls="agent-assistants"
+          onClick={() => setShowAssistants(true)}>Assistants</button>
+        <div className="agent-messenger-header-copy">
+          <b>{agent?.name ?? "My agents"}</b>
+          {activeConversation && <small title={activeConversation.title}>{activeConversation.title}</small>}
+        </div>
+        {activeConversation && (
+          <div className="agent-messenger-chat-actions">
+            <button type="button" className="file-action" disabled={busy || loadingThread || deleting}
+              aria-label="Rename conversation" onClick={() => {
+                setRenameError("");
+                setRenameTarget(activeConversation);
+              }}>Rename</button>
+            {activeConversation.id !== studyCoachThreadId(agentId) && (
+              <button type="button" className="file-action file-action-danger" disabled={busy || loadingThread || deleting}
+                aria-label="Delete conversation" onClick={() => {
+                  setDeleteError("");
+                  setDeleteTarget(activeConversation);
+                }}>Delete</button>
+            )}
+          </div>
+        )}
+      </header>
+      {agent && (
+        <details key={`${agent.id}:${conversationId}`} className="agent-messenger-run">
+          <summary>Run a workspace check</summary>
+          <RunPanel agentId={agent.id} conversationId={conversationId} projectId={activeConversation?.projectId ?? ""} />
+        </details>
+      )}
+      <div className="agent-messenger-thread" role="log" aria-live="polite">
+        {loadingThread && <p className="agent-messenger-thinking" role="status">Loading conversation…</p>}
+        {!loadingThread && !messages.length && !pending && agent && (
+          <div className="agent-messenger-welcome">
+            <div className={`agent-icon ${color}`} aria-hidden="true">{icon}</div>
+            <h1>{agent.name}</h1>
+            <p>{agent.description}</p>
+            <div className="agent-messenger-prompts">
+              {prompts.map((prompt) => <button key={prompt} type="button" disabled={busy}
+                onClick={() => void send(prompt)}>{prompt}</button>)}
+            </div>
+          </div>
+        )}
+        {messages.length > 0 && <div className="agent-messenger-messages">{messages.map(renderMessage)}<div ref={bottom} /></div>}
+      </div>
+      {pending && <p className="agent-messenger-thinking" role="status">
+        {turn?.status === "queued" ? "Queued" : `${agent?.name ?? "Your agent"} is working…`}
+      </p>}
+      {turn?.status === "dead_letter" && (
+        <div className="study-thread-context">
+          <span role="status">This request could not finish.</span>
+          <button className="file-action" type="button" disabled={busy || loadingThread}
+            onClick={() => void runThreadAction({ kind: "retry", turnId: turn.id })}>Retry</button>
+        </div>
+      )}
+      {assignment && (
+        <div className="study-thread-context">
+          <span>Using <strong>{assignment.title}</strong></span>
+          <div className="study-thread-actions">
+            <button type="button" className="file-action" disabled={busy || pending || loadingThread}
+              onClick={() => void runThreadAction({ kind: "study_plan", assignmentId: assignment.assignmentId, turnId: crypto.randomUUID() })}>Draft study plan</button>
+            <button type="button" className="file-action" disabled={busy} onClick={() => { setAssignment(null); }}>Clear context</button>
           </div>
         </div>
       )}
-      <div className="filter-pills" role="tablist" aria-label="Agent categories">
-        {cats.map((c) => (
-          <button key={c} role="tab" aria-selected={filter === c} onClick={() => setFilter(c)} className={filter === c ? "on" : ""}>{c}</button>
-        ))}
-      </div>
-      {shown.length === 0 ? (
-        <div className="card"><p>Activating your starter team…</p></div>
-      ) : (
-        <div className="grid">
-          {shown.map((a) => {
-            const [icon, color] = META[a.template] ?? ["✦", "yellow"];
-            return (
-              <article key={a.id} className="card agent-card">
-                <div className={`agent-icon ${color}`}>{icon}</div>
-                <h3>{a.name}</h3>
-                <p>{a.description || a.role}</p>
-                <div className="agent-foot">
-                  <span>{a.category}</span>
-                  <Link href={`/app/agents/${a.id}`} className="status">Open →</Link>
-                </div>
-              </article>
-            );
-          })}
-          <article className="card agent-card" id="create">
-            <div className="agent-icon" style={{ background: "#eeeae1" }}>+</div>
-            <h3>Create your own</h3>
-            <p>Build a focused agent with your own role, tone and context.</p>
-            <div className="agent-foot">
-              <span>Custom</span>
-              <button onClick={() => setShowForm(true)} className="tag">Create →</button>
-            </div>
-          </article>
-        </div>
-      )}
-    </>
-  );
+      {error && <p className="agent-messenger-error" role="alert">{error}</p>}
+      <form className="agent-messenger-composer" onSubmit={(event) => {
+        event.preventDefault();
+        void send();
+      }}>
+        <textarea
+          aria-label={`Message ${agent?.name ?? "agent"}`}
+          placeholder={`Message ${agent?.name ?? "your companion"}…`}
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }}
+          rows={1}
+          maxLength={4000}
+          title="Shift + Enter for a new line"
+          disabled={loadingThread || !agent}
+        />
+        <button
+          className="agent-messenger-send"
+          type="submit"
+          disabled={busy || pending || loadingThread || !agent || !input.trim()}
+          aria-label="Send message"
+        >↑</button>
+      </form>
+    </main>
+    {deleteTarget && (
+      <ConfirmDialog
+        isOpen
+        title="Delete conversation?"
+        description={`“${deleteTarget.title}” and its messages will be permanently deleted.`}
+        confirmText="Delete conversation"
+        error={deleteError}
+        loading={deleting}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={deleteConversation}
+      />
+    )}
+    {renameTarget && (
+      <PromptDialog
+        isOpen
+        title="Rename conversation"
+        defaultValue={renameTarget.title === DEFAULT_CONVERSATION_TITLE ? "" : renameTarget.title}
+        placeholder="Conversation title"
+        maxLength={MAX_CONVERSATION_TITLE_LENGTH}
+        loading={renaming}
+        error={renameError}
+        onClose={() => setRenameTarget(null)}
+        onSubmit={renameConversation}
+      />
+    )}
+  </section>;
 }

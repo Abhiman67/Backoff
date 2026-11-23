@@ -23,9 +23,10 @@ export const POST = handleApi<{ id: string }>(async (_req, { userId: id }, param
   });
   if (claimed.count === 0) throw invalid("A run was just triggered. Try again in a moment.");
   const { createRun, executeRun } = await import("@/lib/agents/orchestrator");
-  const run = await createRun(id, { agentId: r.agentId, goal: r.instruction || r.title });
+  const run = await createRun(id, { agentId: r.agentId, goal: r.instruction || r.title, routine: { canProposeTask: r.actionPolicy === "approval_required" } });
   const finished = await executeRun(run.id, id);
-  return NextResponse.json({ run: finished }, { status: 201 });
+  const { workspaceRunFinding } = await import("@/lib/agents/workspace-plan");
+  return NextResponse.json({ run: finished, finding: await workspaceRunFinding(run.id) }, { status: 201 });
 }, {
   rateLimit: { keyPrefix: "routine-trigger", limit: 10 },
 });

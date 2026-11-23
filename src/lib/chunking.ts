@@ -1,6 +1,5 @@
 /**
- * Document chunking and semantic relevance scoring utilities for VidyaSarthi RAG pipeline.
- * Compatible with pgvector and local embedding generation.
+ * Document chunking and lexical relevance scoring for source retrieval.
  */
 
 export type TextChunk = {
@@ -143,25 +142,4 @@ export function findRelevantChunks(
     .filter((s) => s.score > 0)
     .slice(0, maxResults)
     .map((s) => s.chunk);
-}
-
-/**
- * Interface definition for vector embeddings storage (compatible with pgvector).
- */
-export interface VectorEmbedding {
-  chunkIndex: number;
-  embedding: number[];
-  dimensions: number;
-}
-
-/**
- * Formats a chunk for insertion into a future pgvector column.
- */
-export function formatForPgvector(chunk: TextChunk, embedding: number[]) {
-  return {
-    chunkIndex: chunk.index,
-    content: chunk.content,
-    embeddingSql: `[${embedding.join(",")}]`,
-    dimensions: embedding.length,
-  };
 }

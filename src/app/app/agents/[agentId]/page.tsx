@@ -8,6 +8,7 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { ConfirmDialog, PromptDialog, Dialog } from "@/components/Dialog";
 import Dropdown from "@/components/Dropdown";
+import { studyCoachThreadId } from "@/lib/study-coach-thread";
 import { SUGGESTED_PROMPTS } from "@/lib/agents";
 
 type Msg = { role: string; content: string };
@@ -28,6 +29,24 @@ const DEFAULT_PROMPTS = [
   "Give me a hint on my coursework",
   "Show a detailed code or study example",
   "Create revision flashcards from my notes",
+];
+
+const STUDY_COACH_ACTIONS = [
+  {
+    title: "Explain a concept",
+    detail: "Get a clear walkthrough grounded in your course files.",
+    prompt: "Explain a key concept from my course materials in simple steps. Cite the source you use, then ask me one quick question to check my understanding.",
+  },
+  {
+    title: "Quiz me",
+    detail: "Practice active recall one question at a time.",
+    prompt: "Quiz me on the key concepts in my course materials, one question at a time. Wait for my answer, then give brief feedback and continue.",
+  },
+  {
+    title: "Plan my study week",
+    detail: "Turn upcoming coursework and deadlines into manageable sessions.",
+    prompt: "Make me a realistic study plan using my upcoming coursework and deadlines. Break it into manageable sessions, cite the coursework you used, and state any assumptions.",
+  },
 ];
 
 const PROMPT_DETAILS: Record<string, { desc: string }> = {
@@ -97,7 +116,7 @@ export default function ChatPage() {
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
     const data = await res.json();
-    setMessages((data.conversation.messages ?? []).map((m: Msg) => ({ role: m.role, content: m.content })));
+    setMessages((data.conversation.messages ?? []).filter((m: Msg) => m.role === "user" || m.role === "assistant").map((m: Msg) => ({ role: m.role, content: m.content })));
     setProjectId(data.conversation.projectId ?? "");
   }, []);
 
@@ -303,7 +322,12 @@ export default function ChatPage() {
     if (!convId) return;
     setDeleting(true);
     try {
-      await fetch(`/api/conversations/${convId}`, { method: "DELETE" });
+      const response = await fetch(`/api/conversations/${convId}`, { method: "DELETE" });
+      if (!response.ok) {
+        setShowDeleteModal(false);
+        setError("Could not delete this conversation.");
+        return;
+      }
       localStorage.removeItem(`conv:${agentId}`);
       setConvId("");
       setMessages([]);
@@ -354,12 +378,11 @@ export default function ChatPage() {
             >
               Rename
             </button>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="tag danger"
-            >
-              Delete
-            </button>
+            {convId !== studyCoachThreadId(agentId) && (
+              <button onClick={() => setShowDeleteModal(true)} className="tag danger">
+                Delete
+              </button>
+            )}
           </div>
         )}
 
@@ -428,26 +451,31 @@ export default function ChatPage() {
                   {icon}
                 </div>
                 <h2 className="claude-welcome-h1">
-                  How can {agent?.name ?? "your agent"} help today?
+                  {agent?.template === "study-coach" ? "Study with your course context" : `How can ${agent?.name ?? "your agent"} help today?`}
                 </h2>
                 <p className="claude-welcome-p">
-                  Ask conceptual questions, review coursework, inspect attached project milestones, or start with a suggested topic:
+                  {agent?.template === "study-coach"
+                    ? "Choose a starting point. I’ll look for relevant ready course files, show the sources I use, and use your upcoming tasks when planning."
+                    : "Ask conceptual questions, review coursework, inspect attached project milestones, or start with a suggested topic:"}
                 </p>
 
                 <div className="claude-prompt-grid">
-                  {suggested.map((p) => {
-                    const detail = PROMPT_DETAILS[p]?.desc || "Click to begin exploring with your agent";
-                    return (
-                      <div
-                        key={p}
-                        onClick={() => send(p)}
-                        className="claude-prompt-card"
-                      >
-                        <b>{p} →</b>
-                        <span>{detail}</span>
-                      </div>
-                    );
-                  })}
+                  {agent?.template === "study-coach"
+                    ? STUDY_COACH_ACTIONS.map((action) => (
+                        <button key={action.title} type="button" onClick={() => send(action.prompt)} className="claude-prompt-card" disabled={busy}>
+                          <b>{action.title} →</b>
+                          <span>{action.detail}</span>
+                        </button>
+                      ))
+                    : suggested.map((p) => {
+                        const detail = PROMPT_DETAILS[p]?.desc || "Click to begin exploring with your agent";
+                        return (
+                          <button key={p} type="button" onClick={() => send(p)} className="claude-prompt-card" disabled={busy}>
+                            <b>{p} →</b>
+                            <span>{detail}</span>
+                          </button>
+                        );
+                      })}
                 </div>
               </div>
             )}

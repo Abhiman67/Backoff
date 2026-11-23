@@ -12,6 +12,7 @@ The current codebase includes:
 - A knowledge workspace with Markdown notes, folders, tags, wikilinks, backlinks, a graph, templates, revision history, and JSON import and export.
 - Study actions for explaining, summarizing, quizzing, flashcards, and study plans. File study actions use the selected file as context.
 - Google Classroom course and assignment sync, published course materials, and task reminders. Drive attachments can be imported separately when Google Drive is connected.
+- Assignment workspaces link each task to notes and files, a next action, source-backed practice, concept mastery, and follow-up revision. Classroom coursework opens the same workspace.
 - Read-only Google Calendar event sync and read-only Drive access. GitHub, Notion, and Gmail actions are previews and do not call those providers.
 - Approval records for supported external actions, ownership checks on API routes, audit events, and encrypted integration tokens.
 
@@ -20,10 +21,12 @@ The current codebase includes:
 This is an active project, not a fully operated SaaS. Before a public launch, configure and verify production OAuth, database migrations, AI credentials, scheduled jobs, email delivery, backups, and monitoring.
 
 - Billing is a stub. The app does not charge users.
-- The current S3 adapter does not read or delete remote objects. Use local storage only for development; implement and verify durable object storage before production file uploads.
+- Production uploads require S3-compatible storage. Configure the bucket, endpoint, region, and credentials, then verify a put/get/delete round trip against the target provider before accepting live student files. Existing local uploads are not migrated automatically.
 - The default job mode runs jobs inline. Redis workers need a configured Redis service and a running worker process.
-- The local embedding implementation is a deterministic placeholder, not a hosted vector search service.
+- Uploaded file chunks use OpenAI `text-embedding-3-small` when `OPENAI_API_KEY` is configured. Without it, search uses source text matching. Existing files need reindexing to gain embeddings; notes remain searchable from their Markdown text. The app stores vectors in JSON and scores them in the app, so scale testing is still needed for large libraries.
+- Assignment practice uses an AI provider when configured and falls back to extractive active recall from the selected excerpt. Results are student self-checks against visible answer keys; they are not automatically graded.
 - Google OAuth is a separate Cloud Console setup. Classroom material access needs the `classroom.courseworkmaterials.readonly` scope. Importing attachment contents also needs the separate Drive connection.
+- Some college domains deny the standalone Classroom materials endpoint even when assignment attachments are readable. The materials view keeps accessible assignment attachments and reports restricted courses. A live attachment import still requires a separate Drive connection.
 - Email sends password-reset and workspace-invitation messages only when `RESEND_API_KEY` and `EMAIL_FROM` are configured.
 
 ## Run locally
@@ -60,7 +63,7 @@ npm run db:pg-bootstrap
 
 For an existing database that was initialized from the PostgreSQL baseline, verify its schema first, mark `20261118000000_baseline` as applied, and deploy later migrations with `npm run db:pg-deploy`. Do not mark the baseline as applied on an empty database.
 
-Vercel uses `npm run build:vercel` through `vercel.json`. Set `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL`, OAuth credentials, and `CRON_SECRET` in the Vercel project. The scheduled route runs the daily responsibility tick. Production file uploads need durable storage, and Redis jobs need a separately running worker.
+Vercel uses `npm run build:vercel` through `vercel.json`. Set `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL`, OAuth credentials, `CRON_SECRET`, and S3 credentials in the Vercel project. The scheduled route runs the daily responsibility tick, including Classroom sync. Check the Classroom connection status for its last successful sync. Redis jobs need a separately running worker.
 
 ## Useful commands
 

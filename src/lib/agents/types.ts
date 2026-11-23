@@ -40,6 +40,7 @@ export type AgentRunRequest = {
   conversationId?: string;
   projectId?: string;
   contextFileIds?: string[];
+  routine?: { canProposeTask: boolean };
 };
 
 export type AgentEvent =

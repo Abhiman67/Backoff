@@ -10,7 +10,7 @@ import { QUEUE_NAME, getRedisUrl } from "@/lib/jobs/redis";
 import { backoffMs, type JobType } from "@/lib/jobs/types";
 import { logError, logInfo } from "@/lib/observability/logger";
 import "@/lib/jobs/processors";
-import { runHandler } from "@/lib/jobs/queue";
+import { runHandler, runPersistedChatJob } from "@/lib/jobs/queue";
 
 function parseKey(jobId: string | undefined): { type: JobType; key: string } | null {
   if (!jobId) return null;
@@ -20,7 +20,22 @@ function parseKey(jobId: string | undefined): { type: JobType; key: string } | n
 }
 
 async function processBullJob(bullJob: BullJob): Promise<void> {
-  let parsed = parseKey(bullJob.id);
+  if (bullJob.name === "agent.chat") {
+    if (typeof bullJob.data?.key !== "string" || typeof bullJob.data.version !== "number") {
+      throw new Error("Invalid chat job payload");
+    }
+    const rec = await db.jobRecord.findUnique({ where: { idempotencyKey: bullJob.data.key } });
+    if (rec?.type !== "agent.chat" || rec.createdAt.getTime() !== bullJob.data.version) return;
+    if (rec.status === "queued") {
+      await runPersistedChatJob(rec);
+    } else if (rec.status === "running" && bullJob.stalledCounter > 0) {
+      await runPersistedChatJob(rec, true);
+    }
+    return;
+  }
+  let parsed = typeof bullJob.data?.recordKey === "string"
+    ? { key: bullJob.data.recordKey }
+    : bullJob.id?.startsWith("repeat:") ? null : parseKey(bullJob.id);
   if (!parsed && bullJob.name) {
     // Scheduler-originated jobs (repeatable): ensure a JobRecord exists.
     const key = `scheduler:${bullJob.id}`;
@@ -29,7 +44,7 @@ async function processBullJob(bullJob: BullJob): Promise<void> {
       create: { type: bullJob.name, idempotencyKey: key, payload: JSON.stringify(bullJob.data ?? {}).slice(0, 8000), status: "queued" },
       update: {},
     });
-    parsed = { type: bullJob.name as JobType, key };
+    parsed = { key };
   }
   if (!parsed) throw new Error(`Unparseable job id ${bullJob.id}`);
   const rec = await db.jobRecord.findUnique({ where: { idempotencyKey: parsed.key } });

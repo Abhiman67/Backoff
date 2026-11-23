@@ -113,7 +113,7 @@ export function RunPanel({ agentId, conversationId, projectId }: { agentId: stri
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agentId, goal: goal.trim(), conversationId: conversationId || undefined, projectId: projectId || undefined }),
-      });
+      }, 90_000);
       if (handleAuth(res)) return;
       if (!res.ok) throw new Error(data.error?.message ?? "Run failed");
       setRun(data.run);
@@ -238,6 +238,7 @@ export function RunPanel({ agentId, conversationId, projectId }: { agentId: stri
                 <li key={s.id} aria-current={isCurrent ? "step" : undefined} style={{ fontWeight: isCurrent ? 800 : 400 }}>
                   {s.title} — {STATUS_LABEL[s.status] ?? s.status}
                   {isCurrent && " ← current"}
+                  {s.kind === "draft" && s.status === "completed" && <p>{s.description}</p>}
                 </li>
               );
             })}

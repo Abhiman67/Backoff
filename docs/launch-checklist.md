@@ -21,9 +21,9 @@ The codebase contains many core student flows, but a production launch still dep
 
 ## Storage, jobs, and email
 
-- [ ] Replace or complete the S3-compatible adapter. The current read and delete operations use local storage.
+- [ ] Configure the S3-compatible bucket and confirm a test upload, read, and delete in the deployment environment.
 - [ ] Configure the job execution mode. If you use Redis mode, run Redis and a worker continuously.
-- [ ] Set `CRON_SECRET` and verify the scheduled responsibility tick in Vercel logs.
+- [ ] Set `CRON_SECRET`. Verify a scheduled responsibility tick in production logs. Use an external scheduler to rehearse the same request against a Vercel Preview.
 - [ ] Configure Resend and a verified `EMAIL_FROM` domain if password-reset or invitation email is required.
 - [ ] Confirm the hosting provider can keep database, object storage, and worker data available after redeploys.
 
@@ -38,7 +38,6 @@ The codebase contains many core student flows, but a production launch still dep
 
 ## Known launch blockers in this repository
 
-- The S3-compatible storage adapter lacks remote reads and deletes.
-- Billing is a stub.
+- Billing is a stub. Keep paid enrollment disabled until billing is ready.
 - Google OAuth requires deployment credentials, consent-screen setup, and a live authorization check.
 - Redis workers, durable storage, backups, email, and monitoring need deployment setup and verification.

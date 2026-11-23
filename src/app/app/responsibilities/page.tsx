@@ -18,6 +18,9 @@ export default function ResponsibilitiesPage() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [agents, setAgents] = useState<AgentOpt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [findings, setFindings] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState<string | null>(null);
+  const [actionPolicy, setActionPolicy] = useState("suggest_only");
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
   const [instruction, setInstruction] = useState("");
@@ -63,7 +66,7 @@ export default function ResponsibilitiesPage() {
       return;
     }
     try {
-      await call("/api/responsibilities", "POST", { agentId, title: title.trim(), instruction: instruction.trim() || undefined, triggerValue: schedule });
+      await call("/api/responsibilities", "POST", { agentId, title: title.trim(), instruction: instruction.trim() || undefined, triggerValue: schedule, actionPolicy });
       setTitle("");
       setInstruction("");
       void load();
@@ -74,10 +77,19 @@ export default function ResponsibilitiesPage() {
 
   async function act(id: string, action: "pause" | "resume" | "trigger") {
     try {
-      await call(`/api/responsibilities/${id}/${action}`);
+      if (action === "trigger") setRunning(id);
+      const result = await call(`/api/responsibilities/${id}/${action}`);
+      if (action === "trigger") {
+        const finding = result.run?.status === "failed"
+          ? result.run.errorMessage || "The routine failed."
+          : result.finding || "Check Approvals for any proposed action.";
+        setFindings(current => ({ ...current, [id]: finding }));
+      }
       void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed.");
+    } finally {
+      if (action === "trigger") setRunning(null);
     }
   }
 
@@ -139,6 +151,15 @@ export default function ResponsibilitiesPage() {
               label="Schedule"
             />
           </div>
+          <Dropdown
+            value={actionPolicy}
+            options={[
+              { value: "suggest_only", label: "Report findings" },
+              { value: "approval_required", label: "Propose a task for approval" },
+            ]}
+            onChange={setActionPolicy}
+            label="Routine result"
+          />
           <label className="sr-only" htmlFor="routine-title">Title</label>
           <input id="routine-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Morning revision check" className="qa-control" />
           <label className="sr-only" htmlFor="routine-instruction">Instruction</label>
@@ -149,7 +170,7 @@ export default function ResponsibilitiesPage() {
         </div>
       </div>
       {routines.length === 0 ? (
-        <EmptyState title="No routines yet" body="Create one above — e.g. a daily Study Coach check that drafts revision tasks for approval." />
+        <EmptyState title="No routines yet" body="Try a daily Study Coach check for upcoming assignments." />
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {routines.map((r) => (
@@ -158,21 +179,23 @@ export default function ResponsibilitiesPage() {
                 <div>
                   <b style={{ fontSize: 14 }}>{r.title}</b>
                   <p style={{ fontSize: 12, color: "var(--color-muted)", margin: "2px 0 0" }}>
-                    {r.agent.name} · {r.triggerValue} · {r.actionPolicy.replace(/_/g, " ")} · {r.status}
+                    {r.agent.name} · {r.triggerValue} · {r.actionPolicy.replace(/_/g, " ")}
                     {r.nextRunAt && r.status === "active" ? ` · next ${new Date(r.nextRunAt).toLocaleString()}` : ""}
+                    {r.lastRunAt ? ` · last run ${new Date(r.lastRunAt).toLocaleString()}` : ""}
                   </p>
                 </div>
                 <span className="tag">{r.status}</span>
               </div>
-              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                <button type="button" className="tag" onClick={() => void act(r.id, "trigger")}>Run now</button>
+              {findings[r.id] && <p role="status">{findings[r.id]}</p>}
+              <div className="routine-actions">
+                <button type="button" className="file-action file-action-primary" disabled={r.status !== "active" || running !== null} onClick={() => void act(r.id, "trigger")}>{running === r.id ? "Checking…" : "Run now"}</button>
                 {r.status === "active" ? (
-                  <button type="button" className="tag" onClick={() => void act(r.id, "pause")}>Pause</button>
+                  <button type="button" className="file-action" onClick={() => void act(r.id, "pause")}>Pause</button>
                 ) : r.status === "paused" ? (
-                  <button type="button" className="tag" onClick={() => void act(r.id, "resume")}>Resume</button>
+                  <button type="button" className="file-action" onClick={() => void act(r.id, "resume")}>Resume</button>
                 ) : null}
-                <button type="button" className="tag danger" onClick={() => setRoutineToDelete(r)}>Delete</button>
-                <Link href="/app/approvals" className="tag" style={{ textDecoration: "none" }}>Approvals →</Link>
+                <Link href="/app/approvals" className="file-action">Approvals →</Link>
+                <button type="button" className="file-action file-action-danger" onClick={() => setRoutineToDelete(r)}>Delete</button>
               </div>
             </div>
           ))}

@@ -1,9 +1,9 @@
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { getEnv, resetEnvCache } from "./env";
 import { HttpError, invalid, notFound, unauthorized } from "./http-error";
 
 describe("env validation", () => {
-  afterEach(() => resetEnvCache());
+  afterEach(() => { resetEnvCache(); vi.unstubAllEnvs(); });
   it("accepts a minimal valid env", () => {
     expect(getEnv({ DATABASE_URL: "file:./dev.db", AUTH_SECRET: "secret" }).DATABASE_URL).toBe("file:./dev.db");
   });
@@ -12,6 +12,13 @@ describe("env validation", () => {
   });
   it("rejects redis mode without REDIS_URL", () => {
     expect(() => getEnv({ DATABASE_URL: "x", AUTH_SECRET: "y", JOB_EXECUTION_MODE: "redis" })).toThrow("REDIS_URL");
+  });
+  it("keeps rejecting SQLite in production after repeated reads", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DATABASE_URL", "file:./dev.db");
+    vi.stubEnv("AUTH_SECRET", "secret");
+    expect(() => getEnv()).toThrow("Production requires a PostgreSQL DATABASE_URL");
+    expect(() => getEnv()).toThrow("Production requires a PostgreSQL DATABASE_URL");
   });
 });
 

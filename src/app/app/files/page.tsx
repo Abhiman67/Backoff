@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ConfirmDialog } from "@/components/Dialog";
 
-type FileRow = { id: string; name: string; status: string; size: number };
+type FileRow = { id: string; name: string; status: string; size: number; failureReason?: string | null };
 
 type StudyData = {
   mode?: "ai" | "extractive" | "unavailable";
@@ -31,6 +31,13 @@ function studyModeLabel(mode: StudyData["mode"]) {
   if (mode === "ai") return "AI · source grounded";
   if (mode === "extractive") return "Extracted from source";
   return "Text extraction needed";
+}
+
+function isUnreadablePreview(text: string) {
+  const sample = text.slice(0, 500);
+  if (!sample) return false;
+  const readable = [...sample].filter((character) => /[A-Za-z0-9\s.,;:!?()'"/\-]/.test(character)).length;
+  return readable / sample.length < 0.72;
 }
 
 function FlashcardDeck({ cards }: { cards: { q: string; a: string }[] }) {
@@ -253,6 +260,23 @@ export default function FilesPage() {
     setOpenPreview(id);
   }
 
+  async function reprocessFile(id: string) {
+    setError("");
+    setPreviews((current) => ({ ...current, [id]: "Re-extracting readable text from this PDF…" }));
+    try {
+      const response = await fetch(`/api/files/${id}`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : data.error?.message ?? "Could not re-extract this file.");
+      const preview = await fetch(`/api/files/${id}`);
+      const previewData = await preview.json();
+      setPreviews((current) => ({ ...current, [id]: previewData.file?.textContent ?? "No readable text was found in this PDF." }));
+      setOpenPreview(id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not re-extract this file.");
+    }
+  }
+
   return (
     <>
       <div className="page-head files-page-head">
@@ -299,6 +323,7 @@ export default function FilesPage() {
           const [label, color] = ext(f.name);
           const activeAction = activeStudy[f.id];
           const currentStudy = activeAction ? studyData[f.id + ":" + activeAction] : undefined;
+          const needsOcr = f.failureReason === "EMPTY_TEXT";
 
           return (
             <div key={f.id} style={{ borderBottom: "1px solid var(--color-line)", paddingBottom: 16, marginBottom: 16 }}>
@@ -306,36 +331,45 @@ export default function FilesPage() {
                 <div className={`agent-icon ${color}`} style={{ margin: 0, fontSize: 11, fontWeight: 800 }}>{label}</div>
                 <div className="grow">
                   <b>{f.name}</b>
-                  <small>{fmt(f.size)} · {f.status}</small>
+                  <small>{fmt(f.size)} · {needsOcr ? "scanned PDF" : f.status}</small>
                 </div>
-                <span className="tag">{f.status}</span>
+                <span className="tag">{needsOcr ? "OCR needed" : f.status}</span>
               </div>
 
-              <div className="file-actions">
-                <button
-                  type="button"
-                  onClick={() => togglePreview(f.id)}
-                  className="file-action"
-                  aria-pressed={openPreview === f.id}
-                >
-                  {openPreview === f.id ? "Close preview" : "Preview"}
-                </button>
-                {[
-                  ["summarize", "Summarize"],
-                  ["flashcards", "Flashcards"],
-                  ["quiz", "Quiz"],
-                ].map(([a, l]) => (
-                  <button
-                    key={a}
-                    type="button"
-                    onClick={() => toggleStudy(f.id, a)}
-                    className={`file-action${activeAction === a ? " is-active" : ""}`}
-                    aria-pressed={activeAction === a}
-                  >
-                    {l}
-                  </button>
-                ))}
-                <Link href="/app/agents" className="file-action file-action-ask" style={{ textDecoration: "none" }}>Ask an agent</Link>
+              {needsOcr && (
+                <p className="files-list-message">This PDF is image-only. Run OCR to extract text for preview and study tools.</p>
+              )}
+              <div className="file-actions" role="group" aria-label={`Actions for ${f.name}`}>
+                {needsOcr ? (
+                  <button type="button" className="file-action file-action-primary" onClick={() => void reprocessFile(f.id)}>Run OCR</button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => togglePreview(f.id)}
+                      className="file-action"
+                      aria-pressed={openPreview === f.id}
+                    >
+                      {openPreview === f.id ? "Close preview" : "Preview"}
+                    </button>
+                    {[
+                      ["summarize", "Summarize"],
+                      ["flashcards", "Flashcards"],
+                      ["quiz", "Quiz"],
+                    ].map(([action, title]) => (
+                      <button
+                        key={action}
+                        type="button"
+                        onClick={() => toggleStudy(f.id, action)}
+                        className="file-action"
+                        aria-pressed={activeAction === action}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                    <Link href="/app/agents" className="file-action file-action-primary">Ask an agent</Link>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={() => setFileToDelete(f)}
@@ -348,9 +382,20 @@ export default function FilesPage() {
 
               {openPreview === f.id && (
                 <div style={{ marginTop: 10, marginLeft: 46, padding: 12, background: "var(--color-paper)", borderRadius: 12, border: "1px solid var(--color-line)" }}>
-                  <p style={{ fontSize: 12, color: "var(--color-ink)", whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", margin: 0 }}>
-                    {previews[f.id] || "Loading preview…"}
-                  </p>
+                  {isUnreadablePreview(previews[f.id] ?? "") ? (
+                    <div>
+                      <p style={{ fontSize: 12, color: "var(--color-ink)", margin: "0 0 10px" }}>
+                        This PDF needs a clean text extraction before it can be previewed or used by your study tools.
+                      </p>
+                      <button type="button" className="file-action" onClick={() => void reprocessFile(f.id)}>
+                        Repair preview
+                      </button>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: 12, color: "var(--color-ink)", whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", margin: 0 }}>
+                      {previews[f.id] || "Loading preview…"}
+                    </p>
+                  )}
                 </div>
               )}
 

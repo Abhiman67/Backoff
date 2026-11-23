@@ -1,4 +1,4 @@
-export type JobType = "file.extract" | "file.chunk" | "file.embed" | "agent.run" | "agent.resume" | "agent.retry" | "usage.aggregate" | "responsibility.tick";
+export type JobType = "file.extract" | "file.chunk" | "file.embed" | "classroom.attachment" | "agent.chat" | "agent.run" | "agent.resume" | "agent.retry" | "usage.aggregate" | "responsibility.tick";
 
 export type Job<T = Record<string, unknown>> = {
   id: string;
@@ -16,6 +16,8 @@ export const MAX_EXECUTION_MS: Record<JobType, number> = {
   "file.extract": 60_000,
   "file.chunk": 30_000,
   "file.embed": 60_000,
+  "classroom.attachment": 110_000,
+  "agent.chat": 90_000,
   "agent.run": 120_000,
   "agent.resume": 120_000,
   "agent.retry": 120_000,

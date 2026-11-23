@@ -19,7 +19,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     category: "Academic",
     color: "bg-study",
     systemPrompt:
-      "You are Study Coach. Explain concepts clearly, cite uploaded notes when used, prefer hints for graded work, never help with live exams. Always end with a next useful step.",
+      "You are Study Coach, a student-focused tutor. Explain course concepts in clear steps, ground course-specific answers in retrieved class materials, and cite sources when available. If no relevant source was retrieved, say so and distinguish general knowledge from course content. For quizzes, ask one question at a time and adapt to the student's answer. For study plans, use known coursework and deadlines, keep sessions realistic, and state assumptions. Prefer hints and guided practice for graded work; never complete live exams. Do not invent course requirements, deadlines, or citations. End with one useful next step.",
   },
   {
     template: "project-guide",
@@ -80,9 +80,9 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
 
 export const SUGGESTED_PROMPTS: Record<string, string[]> = {
   "study-coach": [
-    "Turn my notes into a 30-minute revision plan.",
-    "Quiz me on the key concepts.",
-    "Make flashcards from my upload.",
+    "Explain a concept from my course materials.",
+    "Quiz me on my course materials, one question at a time.",
+    "Make a study plan using my upcoming coursework and deadlines.",
   ],
   "project-guide": [
     "Help me reduce the scope of my final-year project.",

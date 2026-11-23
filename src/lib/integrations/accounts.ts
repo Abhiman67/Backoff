@@ -32,7 +32,7 @@ export async function disconnectProvider(ownerId: string, provider: string) {
 
 export async function listAccounts(ownerId: string) {
   const rows = await db.integrationAccount.findMany({ where: { ownerId }, orderBy: { provider: "asc" } });
-  return rows.map((r) => ({ provider: r.provider, scopes: safeArr(r.scopes as unknown), expiresAt: r.expiresAt, updatedAt: r.updatedAt }));
+  return rows.map((r) => ({ provider: r.provider, scopes: safeArr(r.scopes as unknown), expiresAt: r.expiresAt, updatedAt: r.updatedAt, autoImportAttachments: r.autoImportAttachments }));
 }
 
 function safeArr(raw: unknown): string[] {

@@ -6,11 +6,14 @@ import { signOut } from "next-auth/react";
 
 const crumbs: Record<string, string> = {
   "/app": "Overview",
-  "/app/agents": "My agents",
+  "/app/today": "Today",
+  "/app/approvals": "Approvals",
   "/app/projects": "Projects",
   "/app/tasks": "Tasks",
   "/app/progress": "Progress",
   "/app/knowledge": "Knowledge",
+  "/app/knowledge/graph": "Note graph",
+  "/app/knowledge/folders": "Folders & tags",
   "/app/responsibilities": "Routines",
   "/app/notifications": "Notifications",
   "/app/learning": "Learning",
@@ -19,6 +22,7 @@ const crumbs: Record<string, string> = {
   "/app/usage": "Usage & plan",
   "/app/settings": "Settings",
   "/app/settings/profile": "Profile settings",
+  "/app/settings/integrations": "Integrations",
   "/app/settings/memory": "Memory & context",
   "/app/settings/privacy": "Privacy & data",
 };
@@ -55,30 +59,51 @@ type Approval = {
   createdAt: string;
 };
 
-export default function Topbar({ tag }: { tag: string }) {
+type Account = { name: string; email: string; tag: string };
+
+export default function Topbar({ account }: { account: Account }) {
   const path = usePathname();
+  if (path === "/app/agents") return null;
+  return <WorkspaceTopbar account={account} path={path} />;
+}
+
+function WorkspaceTopbar({ account, path }: { account: Account; path: string }) {
   const router = useRouter();
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [approvals, setApprovals] = useState<{ items: Approval[]; pending: number }>({ items: [], pending: 0 });
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Load pending approvals for notifications
   useEffect(() => {
-    fetch("/api/approvals")
-      .then((r) => r.json())
-      .then((d) => {
-        const pending = (d.approvals ?? []).filter((a: { status: string }) => a.status === "pending");
-        setApprovals(pending);
-      })
-      .catch(() => {});
-  }, [path]);
+    const controller = new AbortController();
+    async function refreshApprovals() {
+      try {
+        const response = await fetch("/api/approvals?status=pending&take=5", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const data: { approvals: Approval[]; stats: { pending: number } } = await response.json();
+        if (!controller.signal.aborted) setApprovals({ items: data.approvals, pending: data.stats.pending });
+      } catch {
+        // Keep the last known count until the next refresh.
+      }
+    }
+    void refreshApprovals();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshApprovals();
+    }, 30_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [path, notifOpen]);
 
   // Global hotkey Cmd+K or Ctrl+K for search
   useEffect(() => {
@@ -153,8 +178,9 @@ export default function Topbar({ tag }: { tag: string }) {
           {/* Notifications Button & Dropdown */}
           <div ref={notifRef} style={{ position: "relative" }}>
             <button
-              className={`icon-btn${approvals.length > 0 ? " notif" : ""}`}
-              aria-label="Notifications & approvals"
+              className="icon-btn top-notifications"
+              aria-label={approvals.pending ? `Notifications & approvals, ${approvals.pending} pending` : "Notifications & approvals"}
+              aria-expanded={notifOpen}
               title="Notifications & approvals"
               onClick={() => {
                 setNotifOpen(!notifOpen);
@@ -163,6 +189,9 @@ export default function Topbar({ tag }: { tag: string }) {
               style={{ fontSize: 13 }}
             >
               ♧
+              {approvals.pending > 0 && <span className="top-approval-badge" aria-hidden="true">
+                {approvals.pending > 99 ? "99+" : approvals.pending}
+              </span>}
             </button>
 
             {notifOpen && (
@@ -171,7 +200,7 @@ export default function Topbar({ tag }: { tag: string }) {
                   position: "absolute",
                   top: 48,
                   right: 0,
-                  width: 320,
+                  width: "min(320px, calc(100vw - 90px))",
                   background: "var(--color-card)",
                   border: "1px solid var(--color-line)",
                   borderRadius: 16,
@@ -183,11 +212,11 @@ export default function Topbar({ tag }: { tag: string }) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <b style={{ fontSize: 13 }}>Notifications</b>
                   <span className="tag" style={{ fontSize: 10 }}>
-                    {approvals.length} pending
+                    {approvals.pending} pending
                   </span>
                 </div>
 
-                {approvals.length === 0 ? (
+                {approvals.items.length === 0 ? (
                   <div style={{ padding: "12px 0", textAlign: "center" }}>
                     <p style={{ fontSize: 12, color: "var(--color-muted)", margin: 0 }}>
                       ✓ All caught up! No actions require review.
@@ -195,10 +224,10 @@ export default function Topbar({ tag }: { tag: string }) {
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflowY: "auto" }}>
-                    {approvals.map((a) => (
+                    {approvals.items.map((a) => (
                       <Link
                         key={a.id}
-                        href="/app/agents"
+                        href="/app/approvals"
                         onClick={() => setNotifOpen(false)}
                         style={{
                           textDecoration: "none",
@@ -227,11 +256,11 @@ export default function Topbar({ tag }: { tag: string }) {
                     All notifications →
                   </Link>
                   <Link
-                    href="/app/tasks"
+                    href="/app/approvals"
                     onClick={() => setNotifOpen(false)}
                     style={{ fontSize: 11, color: "var(--color-brand)", fontWeight: 700, textDecoration: "none" }}
                   >
-                    View planner tasks →
+                    Review approvals →
                   </Link>
                 </div>
               </div>
@@ -240,8 +269,12 @@ export default function Topbar({ tag }: { tag: string }) {
 
           {/* User Avatar & Dropdown */}
           <div ref={userMenuRef} style={{ position: "relative" }}>
-            <div
+            <button
+              type="button"
               className="top-avatar"
+              aria-label="Account and settings"
+              aria-expanded={userMenuOpen}
+              aria-controls={userMenuOpen ? "workspace-account-panel" : undefined}
               onClick={() => {
                 setUserMenuOpen(!userMenuOpen);
                 setNotifOpen(false);
@@ -249,16 +282,17 @@ export default function Topbar({ tag }: { tag: string }) {
               style={{ cursor: "pointer", userSelect: "none" }}
               title="Account & Settings menu"
             >
-              {tag}
-            </div>
+              {account.tag}
+            </button>
 
             {userMenuOpen && (
               <div
+                id="workspace-account-panel"
                 style={{
                   position: "absolute",
                   top: 48,
                   right: 0,
-                  width: 230,
+                  width: "min(272px, calc(100vw - 30px))",
                   background: "var(--color-card)",
                   border: "1px solid var(--color-line)",
                   borderRadius: 16,
@@ -267,9 +301,9 @@ export default function Topbar({ tag }: { tag: string }) {
                   zIndex: 100,
                 }}
               >
-                <div style={{ padding: "8px 16px 12px", borderBottom: "1px solid var(--color-line)" }}>
-                  <p style={{ fontSize: 12, fontWeight: 800, margin: 0 }}>Student Account</p>
-                  <small style={{ color: "var(--color-muted)", fontSize: 11 }}>Signed in</small>
+                <div className="top-account-identity">
+                  <strong>{account.name}</strong>
+                  {account.email !== account.name && <span>{account.email}</span>}
                 </div>
 
                 <div style={{ padding: "6px 0" }}>

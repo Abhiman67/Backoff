@@ -10,6 +10,18 @@ export const GET = handleApi(async (req, { userId: id }) => {
   const url = new URL(req.url);
   const take = Math.min(Math.max(Number(url.searchParams.get("take") || 50), 1), 100);
   const cursor = url.searchParams.get("cursor");
+  if (url.searchParams.get("forChat") === "1") {
+    const files = await db.file.findMany({
+      where: { ownerId: id, status: "ready" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: take + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      select: { id: true, name: true },
+    });
+    const hasMore = files.length > take;
+    if (hasMore) files.pop();
+    return NextResponse.json({ files, nextCursor: hasMore ? files.at(-1)?.id ?? null : null });
+  }
   const files = await db.file.findMany({ where: { ownerId: id, status: { not: "deleted" } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
   const hasMore = files.length > take;
   if (hasMore) files.pop();

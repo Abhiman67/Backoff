@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { chunkText, findRelevantChunks } from "@/lib/chunking";
+import { retrieveSourceChunks } from "@/lib/retrieval";
 
 export type RunContextInput = {
   userId: string;
@@ -17,7 +17,7 @@ export type BoundedContext = {
   project: Record<string, unknown> | null;
   tasks: { id: string; title: string; status: string }[];
   files: { id: string; name: string }[];
-  chunks: { fileId: string; fileName: string; content: string }[];
+  chunks: { fileId: string; fileName: string; index?: number; content: string }[];
   citations: { sourceId: string; label: string }[];
 };
 
@@ -30,7 +30,7 @@ export async function buildBoundedContext(input: RunContextInput): Promise<Bound
     input.conversationId
       ? db.conversation.findFirst({
           where: { id: input.conversationId, userId: input.userId },
-          include: { messages: { orderBy: { createdAt: "asc" }, take: 20 } },
+          include: { messages: { where: { role: { in: ["user", "assistant"] } }, orderBy: { createdAt: "asc" }, take: 20 } },
         })
       : Promise.resolve(null),
     input.projectId
@@ -54,24 +54,17 @@ export async function buildBoundedContext(input: RunContextInput): Promise<Bound
     if (!ownedFileIds.has(fid)) throw new Error("File not authorized");
   }
 
-  const allChunks: { fileId: string; fileName: string; index: number; content: string; tokenEstimate: number }[] = [];
-  for (const f of files) {
-    if (!f.textContent) continue;
-    for (const c of chunkText(f.textContent, 600, 100)) {
-      allChunks.push({ ...c, fileId: f.id, fileName: f.name });
-    }
-  }
-  const top = findRelevantChunks(input.currentGoal, allChunks, 5);
+  const top = await retrieveSourceChunks(input.userId, files, input.currentGoal, 5);
   const citations = Array.from(
     new Map(top.filter((c) => c.fileId && c.fileName).map((c) => [c.fileId as string, { sourceId: c.fileId as string, label: c.fileName as string }])).values()
   ).slice(0, 3);
 
   let used = 0;
   const chunks: BoundedContext["chunks"] = [];
-  for (const c of top as { fileId: string; fileName: string; content: string }[]) {
+  for (const c of top) {
     if (used + c.content.length > MAX_CONTEXT_CHARS) break;
     used += c.content.length;
-    chunks.push({ fileId: c.fileId, fileName: c.fileName, content: c.content.slice(0, 800) });
+    chunks.push({ fileId: c.fileId, fileName: c.fileName, index: c.index, content: c.content.slice(0, 800) });
   }
 
   return {
@@ -105,7 +98,7 @@ export function renderContextText(ctx: BoundedContext): string {
   const parts = [
     `Profile: ${JSON.stringify(ctx.profile).slice(0, 500)}`,
     ctx.project ? `Project: ${JSON.stringify(ctx.project)} Tasks: ${ctx.tasks.map((t) => `${t.title}[${t.status}]`).join("; ").slice(0, 500)}` : "",
-    ctx.chunks.map((c) => `[${c.fileName}] ${c.content}`).join("\n").slice(0, 2000),
+    ctx.chunks.map((c) => `[${c.fileName}, excerpt ${(c.index ?? 0) + 1}; source ${c.fileId}] ${c.content}`).join("\n").slice(0, 2000),
   ];
   return parts.filter(Boolean).join("\n").slice(0, MAX_CONTEXT_CHARS);
 }

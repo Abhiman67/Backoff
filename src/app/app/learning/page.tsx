@@ -73,6 +73,7 @@ export default function LearningPage() {
           <h1>Learning</h1>
           <p>Subjects, mastery, and revision — evidence-based, never guessed.</p>
         </div>
+        <Link href="/app/progress" className="button secondary sm">View progress</Link>
       </div>
       <div className="panel" style={{ marginBottom: 16 }}>
         <h2 style={{ fontSize: 14, margin: "0 0 8px" }}>New subject</h2>

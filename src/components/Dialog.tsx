@@ -117,6 +117,7 @@ type ConfirmDialogProps = {
   icon?: string;
   loading?: boolean;
   isLoading?: boolean;
+  error?: string;
 };
 
 export function ConfirmDialog({
@@ -132,6 +133,7 @@ export function ConfirmDialog({
   icon,
   loading,
   isLoading,
+  error,
 }: ConfirmDialogProps) {
   const isPending = Boolean(loading || isLoading);
   const textBody = description || message || "";
@@ -173,6 +175,7 @@ export function ConfirmDialog({
           {title}
         </h2>
         {textBody && <p className="dialog-desc">{textBody}</p>}
+        {error && <p className="dialog-desc" role="alert">{error}</p>}
 
         <div className="dialog-actions">
           <button
@@ -208,6 +211,8 @@ type PromptDialogProps = {
   submitText?: string;
   cancelText?: string;
   loading?: boolean;
+  maxLength?: number;
+  error?: string;
 };
 
 export function PromptDialog({
@@ -221,6 +226,8 @@ export function PromptDialog({
   submitText = "Save",
   cancelText = "Cancel",
   loading = false,
+  maxLength,
+  error,
 }: PromptDialogProps) {
   const trapRef = useFocusTrap(isOpen);
   useEffect(() => {
@@ -270,6 +277,8 @@ export function PromptDialog({
         <form onSubmit={handleSubmit}>
           <input
             name="promptValue"
+            maxLength={maxLength}
+            disabled={loading}
             defaultValue={defaultValue}
             placeholder={placeholder}
             autoFocus
@@ -278,6 +287,7 @@ export function PromptDialog({
             aria-label={title}
           />
 
+          {error && <p className="dialog-desc" role="alert">{error}</p>}
           <div className="dialog-actions">
             <button
               type="button"

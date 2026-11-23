@@ -6,3 +6,4 @@ dist/
 **/*.db-journal
 .env*.local
 .env
+/storage/

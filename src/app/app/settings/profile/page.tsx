@@ -2,65 +2,102 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { z } from "zod";
+
+const emptyForm = {
+  name: "",
+  institution: "",
+  degree: "",
+  semester: "",
+  studyHours: 2,
+  careerTarget: "",
+};
+
+const profileResponse = z.object({
+  user: z.object({
+    name: z.string(),
+    email: z.string(),
+    profile: z.object({
+      institution: z.string().nullable(),
+      degree: z.string().nullable(),
+      semester: z.string().nullable(),
+      studyHours: z.number().nullable(),
+      careerTarget: z.string().nullable(),
+    }).nullable(),
+  }),
+});
+
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 export default function ProfileSettings() {
   const router = useRouter();
-  const [form, setForm] = useState({
-    name: "",
-    institution: "",
-    degree: "",
-    semester: "",
-    studyHours: 2,
-    careerTarget: "",
-  });
+  const [form, setForm] = useState(emptyForm);
+  const [savedForm, setSavedForm] = useState<typeof emptyForm | null>(null);
   const [email, setEmail] = useState("");
-  const [msg, setMsg] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [loadError, setLoadError] = useState(false);
+
+  const dirty = savedForm !== null && JSON.stringify(form) !== JSON.stringify(savedForm);
+  const saving = saveState === "saving";
+  const status = saving ? "Saving changes…"
+    : saveState === "error" ? "Couldn’t save your profile. Try again."
+    : dirty ? "Unsaved changes"
+    : saveState === "saved" ? "All changes saved"
+    : "";
 
   useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => {
-        if (r.status === 401) router.push("/login");
-        return r.json();
-      })
-      .then((d) => {
-        if (d.user) {
-          setEmail(d.user.email ?? "");
-          setForm({
-            name: d.user.name ?? "",
-            institution: d.user.profile?.institution ?? "",
-            degree: d.user.profile?.degree ?? "",
-            semester: d.user.profile?.semester ?? "",
-            studyHours: d.user.profile?.studyHours ?? 2,
-            careerTarget: d.user.profile?.careerTarget ?? "",
-          });
+    const controller = new AbortController();
+    async function loadProfile() {
+      try {
+        const response = await fetch("/api/profile", { signal: controller.signal, cache: "no-store" });
+        if (response.status === 401) {
+          router.push("/login");
+          return;
         }
-      })
-      .finally(() => setLoading(false));
+        if (!response.ok) throw new Error("Profile unavailable");
+        const { user } = profileResponse.parse(await response.json());
+        if (controller.signal.aborted) return;
+        const profile = {
+          name: user.name,
+          institution: user.profile?.institution ?? "",
+          degree: user.profile?.degree ?? "",
+          semester: user.profile?.semester ?? "",
+          studyHours: user.profile?.studyHours ?? 2,
+          careerTarget: user.profile?.careerTarget ?? "",
+        };
+        setEmail(user.email);
+        setForm(profile);
+        setSavedForm(profile);
+      } catch {
+        if (!controller.signal.aborted) setLoadError(true);
+      }
+    }
+    void loadProfile();
+    return () => controller.abort();
   }, [router]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    setMsg("");
+    if (!dirty || saving) return;
+    const submitted = form;
+    setSaveState("saving");
     try {
-      const res = await fetch("/api/profile", {
+      const response = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(submitted),
       });
-      if (res.ok) {
-        setMsg("Profile saved successfully.");
-      } else {
-        setMsg("Failed to save profile. Please try again.");
-      }
-    } finally {
-      setSaving(false);
+      if (!response.ok) throw new Error("Profile save failed");
+      setSavedForm(submitted);
+      setSaveState("saved");
+      router.refresh();
+    } catch {
+      setSaveState("error");
     }
   }
 
-  if (loading) return <main className="p-8">Loading profile…</main>;
+  if (loadError) return <main className="p-8" role="alert">Couldn’t load your profile. Refresh to try again.</main>;
+  if (!savedForm) return <main className="p-8">Loading profile…</main>;
 
   return (
     <main style={{ maxWidth: 640, margin: "0 auto", paddingBottom: 40 }}>
@@ -75,7 +112,9 @@ export default function ProfileSettings() {
         </div>
       </div>
 
-      <form onSubmit={save} className="panel card form-card">
+      <form onSubmit={save} onChange={() => {
+        if (saveState === "error") setSaveState("idle");
+      }} className="panel card form-card">
         <div className="field">
           <label>
             Account email (read-only)
@@ -178,15 +217,18 @@ export default function ProfileSettings() {
           />
         </div>
 
-        {msg && (
-          <p style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>
-            {msg}
-          </p>
-        )}
+        <p
+          className="profile-save-status"
+          data-state={saveState === "saved" && dirty ? "idle" : saveState}
+          role="status"
+          aria-atomic="true"
+        >
+          {status}
+        </p>
 
         <button
           type="submit"
-          disabled={saving}
+          disabled={!dirty || saving}
           className="button primary sm"
           style={{ width: "100%", justifyContent: "center" }}
         >

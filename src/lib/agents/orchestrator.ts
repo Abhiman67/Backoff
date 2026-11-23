@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { assertRunTransition } from "./state-machine";
-import { buildPlan } from "./planner";
-import { buildBoundedContext, renderContextText } from "./context";
+import { z } from "zod";
+import { planWorkspaceRun } from "./workspace-plan";
 import { getTool } from "@/lib/tools/registry";
 import { requiresApproval } from "@/lib/tools/permissions";
 import { APPROVAL_TTL_MS } from "@/lib/approvals";
@@ -44,7 +44,7 @@ export async function createRun(ownerId: string, req: AgentRunRequest) {
       status: "queued",
       conversationId: req.conversationId,
       projectId: req.projectId,
-      metadata: JSON.stringify({ contextFileIds: req.contextFileIds ?? [] }),
+      metadata: JSON.stringify({ contextFileIds: req.contextFileIds ?? [], routine: req.routine }),
     },
   });
   await trackUsage(ownerId, "agent_run_created");
@@ -63,31 +63,39 @@ export async function planRun(runId: string, ownerId: string) {
   } else if ((run.status as AgentRunStatus) !== "planning") {
     assertRunTransition(run.status as AgentRunStatus, "planning");
   }
-  const steps = buildPlan(run.goal);
-  await db.agentStep.createMany({
-    data: steps.map((s, i) => ({
-      runId,
-      sequence: i,
-      kind: s.kind,
-      title: s.title.slice(0, 120),
-      description: s.description.slice(0, 1000),
-      status: "queued",
-      input: s.input ? JSON.stringify(s.input).slice(0, 4000) : null,
-      requiresApproval: s.requiresApproval,
-    })),
+  const metadata = z.object({
+    contextFileIds: z.array(z.string()).default([]),
+    routine: z.object({ canProposeTask: z.boolean() }).optional(),
+  }).parse(JSON.parse(run.metadata));
+  const steps = await planWorkspaceRun({
+    userId: ownerId,
+    agentId: run.agentId,
+    currentGoal: run.goal,
+    conversationId: run.conversationId ?? undefined,
+    projectId: run.projectId ?? undefined,
+    fileIds: metadata.contextFileIds,
+    canProposeTask: metadata.routine?.canProposeTask ?? true,
   });
-  // Persist toolName for tool steps
-  const created = await db.agentStep.findMany({ where: { runId }, orderBy: { sequence: "asc" } });
-  for (let i = 0; i < created.length; i++) {
-    const s = steps[i];
-    if (s.kind === "tool" && s.toolName) {
-      await db.agentStep.update({ where: { id: created[i].id }, data: { input: JSON.stringify({ toolName: s.toolName, ...(s.input ?? {}) }).slice(0, 4000) } });
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.agentRun.updateMany({
+      where: { id: runId, ownerId, status: "planning" },
+      data: { status: "running" },
+    });
+    if (claimed.count) {
+      await tx.agentStep.createMany({
+        data: steps.map((step, sequence) => ({
+          runId, sequence,
+          kind: step.kind,
+          title: step.title,
+          description: step.description,
+          status: "queued",
+          input: step.toolName ? JSON.stringify({ ...step.input, toolName: step.toolName }) : null,
+          requiresApproval: step.requiresApproval,
+        })),
+      });
     }
-  }
-  const after = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
-  const needsApproval = steps.some((s) => s.requiresApproval);
-  await setRunStatus(runId, "planning", needsApproval ? "awaiting_approval" : "running");
-  return db.agentStep.findMany({ where: { runId }, orderBy: { sequence: "asc" } });
+    return tx.agentStep.findMany({ where: { runId }, orderBy: { sequence: "asc" } });
+  });
 }
 
 export async function executeRun(runId: string, ownerId: string) {
@@ -95,49 +103,36 @@ export async function executeRun(runId: string, ownerId: string) {
   logInfo("run.execute.start", { runId, ownerId });
   const run = await db.agentRun.findFirst({ where: { id: runId, ownerId } });
   if (!run) throw new Error("Run not found");
-  if (run.status === "planning") await planRun(runId, ownerId);
-  const fresh = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
+  const fresh = run;
+  if (fresh.status === "queued" || fresh.status === "planning") {
+    if (fresh.status === "queued") {
+      const claimed = await db.agentRun.updateMany({
+        where: { id: runId, status: "queued" },
+        data: { status: "planning", startedAt: new Date() },
+      });
+      if (!claimed.count) return db.agentRun.findUniqueOrThrow({ where: { id: runId } });
+    }
+    try {
+      await planRun(runId, ownerId);
+    } catch {
+      await db.agentRun.updateMany({
+        where: { id: runId, status: "planning" },
+        data: { status: "failed", errorMessage: "The agent could not review the workspace. Check the AI connection and retry." },
+      });
+      return db.agentRun.findUniqueOrThrow({ where: { id: runId } });
+    }
+  }
   if (fresh.status === "awaiting_approval") {
-    // Only pause when an approval actually exists. Otherwise the run was
-    // marked awaiting_approval by planning but no approval was materialized
-    // yet — continue so the tool step creates exactly one.
     const pending = await db.approval.findFirst({ where: { runId, status: "pending" } });
     if (pending) return fresh;
+    const linked = await db.agentStep.findFirst({ where: { runId, approvalId: { not: null } } });
+    if (linked) return fresh;
     await setRunStatus(runId, "awaiting_approval", "running");
-  }
-  if (fresh.status === "queued" || fresh.status === "planning") {
-    if (fresh.status === "queued") await setRunStatus(runId, "queued", "planning");
-    await planRun(runId, ownerId);
-    // planRun transitions planning → running|awaiting_approval when it creates
-    // steps; when steps already existed it returns early, so apply the same
-    // rule here to avoid stranding the run in planning.
-    const afterPlan = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
-    if (afterPlan.status === "planning") {
-      const steps = await db.agentStep.findMany({ where: { runId } });
-      const openApproval = steps.some((s) => s.requiresApproval && ["queued", "awaiting_approval", "running"].includes(s.status));
-      await setRunStatus(runId, "planning", openApproval ? "awaiting_approval" : "running");
-    }
-    // planRun may have set awaiting_approval preemptively; materialize the
-    // approval row by continuing into the step loop below.
-    const afterPlan2 = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
-    if (afterPlan2.status === "awaiting_approval") {
-      const pending = await db.approval.findFirst({ where: { runId, status: "pending" } });
-      if (!pending) await setRunStatus(runId, "awaiting_approval", "running");
-    }
   }
   const active = await db.agentRun.findUniqueOrThrow({ where: { id: runId } });
   if (active.status !== "running" && active.status !== "awaiting_approval") return active;
 
   const steps = await db.agentStep.findMany({ where: { runId }, orderBy: { sequence: "asc" } });
-  const ctx = await buildBoundedContext({
-    userId: ownerId,
-    agentId: active.agentId,
-    conversationId: active.conversationId ?? undefined,
-    projectId: active.projectId ?? undefined,
-    currentGoal: active.goal,
-  });
-  void renderContextText(ctx);
-
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (step.status === "completed" || step.status === "skipped") continue;
@@ -157,25 +152,32 @@ export async function executeRun(runId: string, ownerId: string) {
         const { toolName: _omit, ...toolInput } = parsed;
 
         if (requiresApproval(tool.risk) || step.requiresApproval) {
-          const existing = await db.approval.findFirst({ where: { runId, status: "pending" } });
-          if (!existing) {
-            const approval = await db.approval.create({
+          tool.inputSchema.parse(toolInput);
+          const approval = await db.$transaction(async (tx) => {
+            const claimed = await tx.agentRun.updateMany({
+              where: { id: runId, status: "running" },
+              data: { status: "awaiting_approval" },
+            });
+            if (!claimed.count) return null;
+            const created = await tx.approval.create({
               data: {
                 ownerId,
                 agentId: active.agentId,
                 runId,
                 title: step.title.slice(0, 160),
-                description: `${step.description}\nTool: ${toolName}`.slice(0, 2000),
-                payload: JSON.stringify({ toolName, ...toolInput }).slice(0, 4000),
+                description: step.description.slice(0, 2000),
+                payload: JSON.stringify({ toolName, ...toolInput }),
                 risk: tool.risk,
                 expiresAt: new Date(Date.now() + APPROVAL_TTL_MS),
               },
             });
-            await db.agentStep.update({ where: { id: step.id }, data: { status: "awaiting_approval", approvalId: approval.id } });
-            await db.agentRun.update({ where: { id: runId }, data: { status: "awaiting_approval" } });
-            await audit(ownerId, "approval_create", { runId, stepId: step.id, approvalId: approval.id, toolName });
-            return db.agentRun.findUniqueOrThrow({ where: { id: runId } });
-          }
+            await tx.agentStep.update({
+              where: { id: step.id },
+              data: { status: "awaiting_approval", approvalId: created.id },
+            });
+            return created;
+          });
+          if (approval) await audit(ownerId, "approval_create", { runId, stepId: step.id, approvalId: approval.id, toolName });
           return db.agentRun.findUniqueOrThrow({ where: { id: runId } });
         }
 
@@ -187,7 +189,7 @@ export async function executeRun(runId: string, ownerId: string) {
         await db.toolCall.update({ where: { id: call.id }, data: { status: "completed", output: JSON.stringify(output).slice(0, 4000), completedAt: new Date() } });
         await db.agentStep.update({ where: { id: step.id }, data: { status: "completed", output: JSON.stringify(output).slice(0, 4000), completedAt: new Date() } });
       } else {
-        await db.agentStep.update({ where: { id: step.id }, data: { status: "completed", output: `Done: ${step.title}`.slice(0, 1000), completedAt: new Date() } });
+        await db.agentStep.update({ where: { id: step.id }, data: { status: "completed", output: step.kind === "draft" ? step.description : `Done: ${step.title}`, completedAt: new Date() } });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Step failed";

@@ -3,7 +3,7 @@ import { z } from "zod";
 const studyResultSchemas = {
   summarize: z.object({ summary: z.string().min(1), points: z.array(z.string()).min(1).max(8) }),
   flashcards: z.object({ cards: z.array(z.object({ q: z.string().min(1), a: z.string().min(1) })).min(1).max(12) }),
-  quiz: z.object({ quiz: z.array(z.object({ q: z.string().min(1), hint: z.string().optional(), answer: z.string().min(1) })).min(1).max(10) }),
+  quiz: z.object({ quiz: z.array(z.object({ q: z.string().min(1), hint: z.string().optional(), answer: z.string().min(1), concept: z.string().min(1).optional() })).min(1).max(10) }),
 };
 
 type StudyAction = keyof typeof studyResultSchemas;
@@ -21,7 +21,7 @@ const taskLabels: Record<StudyAction, string> = {
 const outputShapes: Record<StudyAction, string> = {
   summarize: '{"summary":"...","points":["..."]}',
   flashcards: '{"cards":[{"q":"...","a":"..."}]}',
-  quiz: '{"quiz":[{"q":"...","hint":"...","answer":"..."}]}',
+  quiz: '{"quiz":[{"q":"...","hint":"...","answer":"...","concept":"short concept name"}]}',
 };
 
 function promptFor(action: StudyAction, sourceName: string, sourceText: string) {

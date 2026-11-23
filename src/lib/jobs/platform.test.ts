@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import { backoffMs, MAX_EXECUTION_MS } from "./types";
 import { getJobMode } from "./redis";
 import { bullJobId, bullOptions } from "./bull";
-import { pseudoEmbedding } from "./processors";
+import { cosineSimilarity } from "../embeddings";
 import { storageKeyFor } from "../storage";
 import { localStorage } from "../storage/local";
 import { encryptToken, decryptToken } from "../integrations/crypto";
@@ -20,11 +20,8 @@ describe("jobs: backoff, timeout, idempotency", () => {
     expect(MAX_EXECUTION_MS["file.extract"]).toBeLessThanOrEqual(60000);
     expect(MAX_EXECUTION_MS["agent.run"]).toBe(120000);
   });
-  it("produces stable pseudo-embeddings", () => {
-    const a = pseudoEmbedding("hello world");
-    const b = pseudoEmbedding("hello world");
-    expect(a).toEqual(b);
-    expect(a.length).toBe(16);
+  it("ranks matching vectors above unrelated vectors", () => {
+    expect(cosineSimilarity([1, 0], [1, 0])).toBeGreaterThan(cosineSimilarity([1, 0], [0, 1]));
   });
 });
 
@@ -75,7 +72,8 @@ describe("queue modes (Milestone 5)", () => {
     expect(getJobMode()).toBe("redis");
   });
   it("maps stable BullMQ job ids and retry options", () => {
-    expect(bullJobId("file.extract", "abc")).toBe("file.extract:abc");
+    expect(bullJobId("file.extract", "file:abc:retry")).toMatch(/^file\.extract-[a-f0-9]{64}$/);
+    expect(bullJobId("file.extract", "abc")).toBe(bullJobId("file.extract", "abc"));
     const opts = bullOptions(3);
     expect(opts.attempts).toBe(4);
     expect(opts.backoff).toMatchObject({ type: "exponential" });

@@ -8,6 +8,7 @@ No browser automation framework is configured in this repository. Use this check
 2. Open the workspace overview and navigate to Today, Learning, Agents, Projects, Tasks, Knowledge, Files, Career, Approvals, and Settings.
 3. Open a page while signed out. Confirm the app sends you to sign in.
 4. Create a task, edit it, complete it, and confirm the change remains after refresh.
+5. Compare the Tasks calendar before and after adding a long task title. Check that weekday headings align with all date cells at desktop and mobile widths.
 
 ## Notes and files
 
@@ -34,6 +35,17 @@ Run these checks only with a Google test account that has access to the configur
 4. Open a material link. Connect Google Drive separately and import a supported attachment.
 5. Confirm the imported file appears once in Files & notes, then retry the import and confirm it is not duplicated.
 6. Connect Calendar and confirm read-only events appear in the student workspace.
+
+## Automatic assignment attachments
+
+1. In Settings > Integrations, enable **Auto-import assignment attachments** after connecting Classroom and Drive.
+2. Publish a test assignment with an image-only PDF that contains a short line of readable text.
+3. Close the browser and run the staging scheduler. For a Vercel Preview, call `/api/responsibilities/tick` from an external scheduler with the configured bearer secret. Vercel Cron Jobs runs on production deployments.
+4. Reopen the assignment. Confirm the PDF appears once in Files & notes and the assignment lists it as a linked source. Run sync again and check for duplicates.
+5. Ask Study Coach about the assignment. Confirm the reply uses the line from the PDF and cites its filename.
+6. Draft a study plan and approve it. Repeat the approval and confirm that the original set of tasks remains the only set.
+
+See [Vercel Cron Jobs configuration](https://vercel.com/docs/project-configuration/vercel-json#crons) for the production schedule.
 
 ## Release record
 

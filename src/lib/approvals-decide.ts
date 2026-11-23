@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { assertApprovable, ApprovalDecisionError } from "@/lib/approvals";
 
+import { readThreadData, studyPlanApprovalSchema } from "@/lib/study-coach-thread";
+
 export type DecideAction = "approve" | "deny";
 
 /**
@@ -26,6 +28,29 @@ export async function decideApproval(ownerId: string, approvalId: string, action
   }
 
   const approvalStatus = action === "approve" ? "approved" : "denied";
+  const plan = readThreadData(studyPlanApprovalSchema, row.payload);
+  if (action === "approve" && plan) {
+    return db.$transaction(async (tx) => {
+      const claimed = await tx.approval.updateMany({
+        where: { id: approvalId, ownerId, status: "pending" },
+        data: { status: "approved", decidedAt: new Date() },
+      });
+      if (!claimed.count) throw new ApprovalDecisionError("ALREADY_DECIDED", "This plan was already reviewed.");
+      const assignment = await tx.task.findFirst({
+        where: { id: plan.assignmentId, ownerId, externalProvider: "classroom", status: { notIn: ["completed", "cancelled"] } },
+        select: { subjectId: true, dueDate: true },
+      });
+      if (!assignment) throw new Error("The Classroom assignment is no longer open.");
+      await tx.task.createMany({
+        data: plan.sessions.map((title) => ({
+          ownerId, title, agentId: row.agentId, subjectId: assignment.subjectId,
+          dueDate: assignment.dueDate && assignment.dueDate > new Date() ? assignment.dueDate : null,
+        })),
+      });
+      const approval = await tx.approval.findUniqueOrThrow({ where: { id: approvalId } });
+      return { approval, executionResult: "Three study sessions were added to your planner." };
+    });
+  }
   const claimed = await db.approval.updateMany({
     where: { id: approvalId, ownerId, status: "pending" },
     data: { status: approvalStatus, decidedAt: new Date() },

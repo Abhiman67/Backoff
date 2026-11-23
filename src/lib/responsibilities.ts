@@ -27,7 +27,7 @@ export function isValidSchedule(value: string): boolean {
   return nextRunAfter(value, Date.now()) !== null;
 }
 
-export type TickResult = { ran: number; skipped: number; errors: string[] };
+export type TickResult = { ran: number; skipped: number; classroomSynced: number; errors: string[] };
 
 /**
  * Run all due responsibilities once. Each claim is a guarded conditional
@@ -38,21 +38,26 @@ export type TickResult = { ran: number; skipped: number; errors: string[] };
 export async function tickResponsibilities(now = Date.now(), limit = 25): Promise<TickResult> {
   const { db } = await import("@/lib/db");
   const { createRun, executeRun } = await import("@/lib/agents/orchestrator");
+  const { workspaceRunFinding } = await import("@/lib/agents/workspace-plan");
   const { notify } = await import("@/lib/notifications");
-  const result: TickResult = { ran: 0, skipped: 0, errors: [] };
+  const result: TickResult = { ran: 0, skipped: 0, classroomSynced: 0, errors: [] };
 
   // Keep Classroom-backed tasks current whenever the scheduler ticks.
   const { syncClassroomTasks } = await import("@/lib/integrations/classroom-sync");
-  const { logError } = await import("@/lib/observability/logger");
+  const { logError, logInfo } = await import("@/lib/observability/logger");
   const classroomAccounts = await db.integrationAccount.findMany({ where: { provider: "classroom" }, select: { ownerId: true } });
   for (let offset = 0; offset < classroomAccounts.length; offset += 3) {
     const batch = classroomAccounts.slice(offset, offset + 3);
     const outcomes = await Promise.allSettled(batch.map((account) => syncClassroomTasks(account.ownerId)));
     for (const [index, outcome] of outcomes.entries()) {
-      if (outcome.status === "rejected") {
+      if (outcome.status === "fulfilled") {
+        result.classroomSynced += outcome.value.synced;
+        logInfo("classroom.scheduled_sync.succeeded", { ownerId: batch[index].ownerId, synced: outcome.value.synced });
+      } else {
         const ownerId = batch[index].ownerId;
         result.errors.push("A Google Classroom sync failed.");
         logError("classroom.scheduled_sync.failed", { ownerId });
+        await db.integrationAccount.updateMany({ where: { ownerId, provider: "classroom" }, data: { lastSyncError: "Scheduled sync failed. Try syncing again or reconnect Classroom." } });
         await notify(ownerId, {
           kind: "classroom_sync_failed",
           title: "Google Classroom could not sync",
@@ -86,16 +91,25 @@ export async function tickResponsibilities(now = Date.now(), limit = 25): Promis
       continue;
     }
     try {
-      const run = await createRun(r.ownerId, { agentId: r.agentId, goal: r.instruction || r.title });
+      const run = await createRun(r.ownerId, { agentId: r.agentId, goal: r.instruction || r.title, routine: { canProposeTask: r.actionPolicy === "approval_required" } });
       const finished = await executeRun(run.id, r.ownerId);
       result.ran += 1;
+      const finding = await workspaceRunFinding(run.id);
       if (finished.status === "awaiting_approval") {
         await notify(r.ownerId, {
           kind: "approval_required",
           title: `"${r.title}" needs your review`,
-          body: "A scheduled check produced an action waiting for approval.",
+          body: finding ?? "A scheduled check produced an action waiting for approval.",
           link: "/app/approvals",
           groupedKey: `responsibility:${r.id}:approval`,
+        });
+      } else if (finished.status === "completed" && finding) {
+        await notify(r.ownerId, {
+          kind: "routine_completed",
+          title: `"${r.title}" completed`,
+          body: finding,
+          link: "/app/responsibilities",
+          groupedKey: `responsibility:${r.id}:result`,
         });
       } else if (finished.status === "failed") {
         await notify(r.ownerId, {

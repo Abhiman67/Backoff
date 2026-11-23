@@ -5,11 +5,12 @@ import { db } from "@/lib/db";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { logError } from "@/lib/observability/logger";
 const hash = (v: string) => createHash("sha256").update(v).digest("hex");
 const requestSchema = z.object({ email: z.string().email().max(255) });
 const resetSchema = z.object({ token: z.string().min(32).max(200), password: z.string().min(8).max(128) });
 export async function POST(req: Request) {
-  const body = await req.json();
+  const body: unknown = await req.json().catch(() => null);
   const request = requestSchema.safeParse(body);
   if (request.success) {
     const user = await db.user.findUnique({ where: { email: request.data.email.toLowerCase() }, select: { id: true } });
@@ -18,7 +19,9 @@ export async function POST(req: Request) {
       const token = randomBytes(32).toString("hex");
       await db.passwordResetToken.create({ data: { userId: user.id, tokenHash: hash(token), expiresAt: new Date(Date.now() + 30 * 60 * 1000) } });
       await audit(user.id, "password_reset_requested");
-      const sent = await sendPasswordResetEmail(request.data.email.toLowerCase(), token, new URL(req.url).origin);
+      const origin = new URL(process.env.NEXTAUTH_URL ?? req.url).origin;
+      const sent = await sendPasswordResetEmail(request.data.email.toLowerCase(), token, origin).catch(() => false);
+      if (!sent) logError("password_reset.delivery_unavailable");
       if (!sent && process.env.NODE_ENV !== "production") return NextResponse.json({ ok: true, devToken: token });
     }
     return NextResponse.json({ ok: true });
@@ -27,10 +30,17 @@ export async function POST(req: Request) {
   if (!reset.success) return NextResponse.json({ error: "Invalid reset request" }, { status: 400 });
   const record = await db.passwordResetToken.findUnique({ where: { tokenHash: hash(reset.data.token) } });
   if (!record || record.usedAt || record.expiresAt < new Date()) return NextResponse.json({ error: "Invalid or expired token" }, { status: 400 });
-  await db.$transaction([
-    db.user.update({ where: { id: record.userId }, data: { passwordHash: await bcrypt.hash(reset.data.password, 12) } }),
-    db.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
-  ]);
+  const passwordHash = await bcrypt.hash(reset.data.password, 12);
+  const consumed = await db.$transaction(async (transaction) => {
+    const now = new Date();
+    const claimed = await transaction.passwordResetToken.updateMany({
+      where: { id: record.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now },
+    });
+    if (!claimed.count) return false;
+    await transaction.user.update({ where: { id: record.userId }, data: { passwordHash } });
+    return true;
+  });
+  if (!consumed) return NextResponse.json({ error: "Invalid or expired token" }, { status: 400 });
   await audit(record.userId, "password_reset_completed");
   return NextResponse.json({ ok: true });
 }
