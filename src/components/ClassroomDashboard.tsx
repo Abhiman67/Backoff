@@ -408,7 +408,7 @@ export function ClassroomDashboard({
                 <div className="course-card-top">
                   <div>
                     <span className="course-section-badge">{course.section}</span>
-                    <h4 className="course-title">{course.name}</h4>
+                    <h4 className="course-title"><Link href={`/app/classroom/${encodeURIComponent(course.id)}`}>{course.name}</Link></h4>
                     <span className="course-instructor">{course.instructor}</span>
                   </div>
                   <div className="course-corner-icon" aria-hidden="true">✦</div>
@@ -441,6 +441,9 @@ export function ClassroomDashboard({
                 </div>
 
                 <div className="course-card-footer">
+                  <Link href={`/app/classroom/${encodeURIComponent(course.id)}`} className="course-action-link">
+                    Open course →
+                  </Link>
                   <button
                     type="button"
                     onClick={() => setPrompt(`Generate a revision plan and flashcards for ${course.name}`)}

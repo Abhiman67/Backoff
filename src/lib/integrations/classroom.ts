@@ -1,7 +1,7 @@
 import { MIN_SCOPES } from "./scopes";
 import { z } from "zod";
 
-const courseSchema = z.object({ id: z.string(), name: z.string(), section: z.string().optional() });
+const courseSchema = z.object({ id: z.string(), name: z.string(), section: z.string().optional(), alternateLink: z.string().optional(), room: z.string().optional() });
 const courseworkSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -216,6 +216,7 @@ export type ClassroomCourse = {
   id: string;
   name: string;
   section?: string;
+  classroomUrl?: string;
   descriptionHeading?: string;
   instructor: string;
   room?: string;
@@ -375,7 +376,7 @@ export async function listClassroomCourses(accessToken: string): Promise<Classro
           });
           return { id: w.id, title: w.title, type, driveAttachments, dueDate: dueDate?.toISOString(), dueText: dueDate ? `Due ${dueDate.toLocaleDateString()}` : "No due date", status, link: w.alternateLink } satisfies ClassroomItem;
         });
-        return { id: c.id, name: c.name, section: c.section ?? `SEC-${idx + 1}`, instructor: "Faculty Instructor", colorScheme: colors[idx % colors.length], assignments } satisfies ClassroomCourse;
+        return { id: c.id, name: c.name, section: c.section ?? `SEC-${idx + 1}`, classroomUrl: safeGoogleUrl(c.alternateLink ?? undefined) ?? undefined, room: c.room, instructor: "Faculty Instructor", colorScheme: colors[idx % colors.length], assignments } satisfies ClassroomCourse;
       }));
       courses.push(...batch);
     }
