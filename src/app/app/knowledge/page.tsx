@@ -18,9 +18,24 @@ export default function KnowledgePage() {
   const searchTerm = useRef("");
   const templateApplied = useRef(false);
   const deepLinkOpened = useRef(false);
-  const load = useCallback(async () => { try { const [n, f, s, p, g] = await Promise.all([fetch("/api/notes?take=100"), fetch("/api/files"), fetch("/api/subjects"), fetch("/api/projects"), fetch("/api/career/goals")]); if (!n.ok || !f.ok) throw new Error("Could not load your knowledge."); const noteData = await n.json(); setNotes(noteData.notes ?? []); setNoteCount(noteData.total ?? 0); setNextCursor(noteData.nextCursor ?? null); setFiles((await f.json()).files ?? []); if (s.ok) setSubjects((await s.json()).subjects ?? []); if (p.ok) setProjects((await p.json()).projects ?? []); if (g.ok) setGoals((await g.json()).goals ?? []); } catch (e) { setError(e instanceof Error ? e.message : "Could not load your knowledge."); } finally { setLoading(false); } }, []);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load(); }, [load]);
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    async function options<T>(url: string, key: string, apply: (items: T[]) => void) {
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error();
+        apply((await response.json())[key]);
+      } catch {
+        if (!controller.signal.aborted) setError("Could not load " + key + ".");
+      }
+    }
+    void options("/api/files?view=options&take=6", "files", setFiles);
+    void options("/api/subjects?view=options", "subjects", setSubjects);
+    void options("/api/projects?view=options", "projects", setProjects);
+    void options("/api/career/goals", "goals", setGoals);
+    return () => controller.abort();
+  }, [reload]);
   function open(n: Note) {
     const noteTitle = n.name.replace(/\.md$/, "");
     const noteContent = n.textContent ?? "";
@@ -57,7 +72,6 @@ export default function KnowledgePage() {
     }).then((note) => open(note)).catch((cause) => setError(cause instanceof Error ? cause.message : "That linked note could not be found."));
   }, [loading, notes]);
   useEffect(() => {
-    if (loading) return;
     let current = true;
     const timer = window.setTimeout(() => {
       setSearchLoading(true);
@@ -67,10 +81,10 @@ export default function KnowledgePage() {
       }).then((data) => {
         if (!current) return;
         setNotes(data.notes ?? []); setNoteCount(data.total ?? 0); setNextCursor(data.nextCursor ?? null);
-      }).catch((cause) => { if (current) setError(cause instanceof Error ? cause.message : "Could not search your notes."); }).finally(() => { if (current) setSearchLoading(false); });
+      }).catch((cause) => { if (current) setError(cause instanceof Error ? cause.message : "Could not search your notes."); }).finally(() => { if (current) { setSearchLoading(false); setLoading(false); } });
     }, search ? 220 : 0);
     return () => { current = false; window.clearTimeout(timer); };
-  }, [search, loading]);
+  }, [search, reload]);
   useEffect(() => {
     if (loading || templateApplied.current) return;
     const template = new URLSearchParams(window.location.search).get("template");
@@ -186,7 +200,7 @@ export default function KnowledgePage() {
     } finally { setExporting(false); }
   }
   if (loading) return <main className="p-8"><div className="panel">Reading your notes…</div></main>;
-  if (error && !notes.length && !files.length) return <main className="p-8"><ErrorState message={error} retry={() => void load()} /></main>;
+  if (error && !notes.length && !files.length) return <main className="p-8"><ErrorState message={error} retry={() => { setError(""); setReload(value => value + 1); }} /></main>;
   const query = search.trim();
   const visibleNotes = notes;
   const picker = <div className="note-context-row"><Dropdown value={active?.subjectId ?? ""} onChange={(v) => void attach("subjectId", v)} label="Course" options={[{ value: "", label: "No course" }, ...subjects.map((x) => ({ value: x.id, label: x.name ?? "Course" }))]} /><Dropdown value={active?.projectId ?? ""} onChange={(v) => void attach("projectId", v)} label="Project" options={[{ value: "", label: "No project" }, ...projects.map((x) => ({ value: x.id, label: x.name ?? "Project" }))]} /><Dropdown value={active?.careerGoalId ?? ""} onChange={(v) => void attach("careerGoalId", v)} label="Career goal" options={[{ value: "", label: "No career goal" }, ...goals.map((x) => ({ value: x.id, label: x.title ?? "Career goal" }))]} /></div>;

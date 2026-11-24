@@ -146,12 +146,18 @@ export default function AgentsPage() {
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      await fetch("/api/agents/ensure", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const response = await fetch("/api/agents");
-      if (!response.ok) throw new Error("Could not load your agents.");
-      const data: { agents: Agent[] } = await response.json();
+      async function roster(): Promise<Agent[]> {
+        const response = await fetch("/api/agents?view=roster", { signal: controller.signal });
+        if (!response.ok) throw new Error("Could not load your agents.");
+        return (await response.json()).agents;
+      }
+      let list = await roster();
+      if (!list.length) {
+        const setup = await fetch("/api/agents/ensure", { method: "POST", body: "{}", signal: controller.signal });
+        if (!setup.ok) throw new Error("Could not prepare agents.");
+        list = await roster();
+      }
       if (controller.signal.aborted) return;
-      const list = data.agents;
       setAgents(list);
       let previousAgent: string | null = null;
       let previousThread: string | null = null;
@@ -164,14 +170,6 @@ export default function AgentsPage() {
         ?? list.find((item: Agent) => item.id === previousAgent)
         ?? list.find((item: Agent) => item.template === "study-coach") ?? list[0];
       if (selected) {
-        for (const item of list) {
-          if (item.id === selected.id) continue;
-          void fetchHistory(item.id, controller.signal).then((threads) => {
-            if (!controller.signal.aborted) {
-              setHistories((current) => current[item.id] ? current : { ...current, [item.id]: threads });
-            }
-          }).catch(() => {});
-        }
         setAgentId(selected.id);
         const requestedThread = handoff.get("agent") === selected.id ? handoff.get("conversation") : null;
         await loadConversations(selected.id, requestedThread ?? (selected.id === previousAgent ? previousThread ?? undefined : undefined));
@@ -191,6 +189,18 @@ export default function AgentsPage() {
     });
     return () => controller.abort();
   }, [loadConversations]);
+
+  const searching = Boolean(query);
+  useEffect(() => {
+    if (!searching) return;
+    const controller = new AbortController();
+    for (const agent of agents) {
+      void fetchHistory(agent.id, controller.signal).then(threads => {
+        if (!controller.signal.aborted) updateHistory(agent.id, () => threads);
+      }).catch(() => {});
+    }
+    return () => controller.abort();
+  }, [agents, searching, updateHistory]);
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, pending]);
 

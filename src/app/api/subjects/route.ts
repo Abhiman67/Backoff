@@ -14,6 +14,13 @@ export const GET = handleApi(async (req, { userId: id }) => {
   const url = new URL(req.url);
   const take = Math.min(Math.max(Number(url.searchParams.get("take") || 50), 1), 100);
   const cursor = url.searchParams.get("cursor");
+  if (url.searchParams.get("view") === "options") {
+    const options = await db.subject.findMany({
+      where: { ownerId: id }, select: { id: true, name: true, code: true },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take,
+    });
+    return NextResponse.json({ subjects: options }, { headers: { "Cache-Control": "private, max-age=15", Vary: "Cookie" } });
+  }
   const subjects = await db.subject.findMany({
     where: { ownerId: id },
     include: { topics: { orderBy: { position: "asc" } }, _count: { select: { sessions: true } } },

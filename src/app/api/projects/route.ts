@@ -7,6 +7,13 @@ export const GET = handleApi(async (req, { userId: id }) => {
   const url = new URL(req.url);
   const take = Math.min(Math.max(Number(url.searchParams.get("take") || 50), 1), 100);
   const cursor = url.searchParams.get("cursor");
+  if (url.searchParams.get("view") === "options") {
+    const options = await db.project.findMany({
+      where: { ownerId: id }, select: { id: true, name: true },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take,
+    });
+    return NextResponse.json({ projects: options }, { headers: { "Cache-Control": "private, max-age=15", Vary: "Cookie" } });
+  }
   const projects = await db.project.findMany({ where: { ownerId: id }, include: { tasks: { take: 100 } }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: take + 1, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
   const hasMore = projects.length > take;
   if (hasMore) projects.pop();

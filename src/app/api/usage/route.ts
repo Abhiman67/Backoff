@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getUsage } from "@/lib/usage";
-import { getQuota } from "@/lib/quotas";
+import { getPlan, quotaSummary } from "@/lib/quotas";
 import { handleApi, HttpError, invalid } from "@/lib/api";
 
 export const GET = handleApi(async (_req, { userId }) => {
-  const usage = await getUsage(userId);
-  const [messageQuota, fileQuota] = await Promise.all([getQuota(userId, "messages"), getQuota(userId, "files")]);
-  const agents = await db.agent.count({ where: { ownerId: userId } });
+  const [usage, plan, agents] = await Promise.all([
+    getUsage(userId), getPlan(userId), db.agent.count({ where: { ownerId: userId } }),
+  ]);
+  const messageQuota = quotaSummary(plan, "messages", usage.byType.message ?? 0);
+  const fileQuota = quotaSummary(plan, "files", usage.files);
   return NextResponse.json({
     plan: messageQuota.plan === "pro" ? "Student Pro" : "Starter",
     agents,

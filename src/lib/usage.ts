@@ -9,15 +9,13 @@ export async function trackUsage(ownerId: string, type: string) {
 }
 
 export async function getUsage(ownerId: string) {
-  const events = await db.usageEvent.groupBy({
+  const [events, conversations, files] = await Promise.all([db.usageEvent.groupBy({
     by: ["type"],
     where: { ownerId },
     _count: { type: true },
-  });
-  const conversations = await db.message.count({
+  }), db.message.count({
     where: { conversation: { userId: ownerId } },
-  });
-  const files = await db.file.count({ where: { ownerId, status: { not: "deleted" } } });
+  }), db.file.count({ where: { ownerId, status: { not: "deleted" } } })]);
   return {
     byType: Object.fromEntries(events.map((e: { type: string; _count: { type: number } }) => [e.type, e._count.type])),
     conversations,

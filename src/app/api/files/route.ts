@@ -22,7 +22,7 @@ export const GET = handleApi(async (req, { userId: id }) => {
     if (hasMore) files.pop();
     return NextResponse.json({ files, nextCursor: hasMore ? files.at(-1)?.id ?? null : null });
   }
-  const files = await db.file.findMany({ where: { ownerId: id, status: { not: "deleted" } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
+  const files = await db.file.findMany({ where: { ownerId: id, status: { not: "deleted" } }, ...(url.searchParams.get("view") === "options" ? { select: { id: true, name: true, size: true, createdAt: true } } : {}), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
   const hasMore = files.length > take;
   if (hasMore) files.pop();
   return NextResponse.json({ files, nextCursor: hasMore ? files.at(-1)?.id ?? null : null });

@@ -111,8 +111,8 @@ export default function TasksPage() {
 
   const load = () => {
     fetch("/api/tasks").then((r) => r.json()).then((d) => setTasks(d.tasks ?? []));
-    fetch("/api/projects").then((r) => r.json()).then((d) => setProjects(d.projects ?? []));
-    fetch("/api/subjects").then((r) => r.json()).then((d) => setSubjects(d.subjects ?? []));
+    fetch("/api/projects?view=options").then((r) => r.json()).then((d) => setProjects(d.projects ?? []));
+    fetch("/api/subjects?view=options").then((r) => r.json()).then((d) => setSubjects(d.subjects ?? []));
   };
 
   useEffect(() => { load(); }, []);

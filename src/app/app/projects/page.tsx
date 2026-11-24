@@ -17,8 +17,8 @@ export default function ProjectsPage() {
   const [name, setName] = useState("");
   const load = () => {
     fetch("/api/projects").then((r) => r.json()).then((d) => setProjects(d.projects ?? []));
-    fetch("/api/agents").then((r) => r.json()).then((d) => setAgents(d.agents ?? []));
-    fetch("/api/files").then((r) => r.json()).then((d) => setFiles(d.files ?? []));
+    fetch("/api/agents?view=roster").then((r) => r.json()).then((d) => setAgents(d.agents ?? []));
+    fetch("/api/files?view=options&take=2").then((r) => r.json()).then((d) => setFiles(d.files ?? []));
   };
   useEffect(() => { load(); }, []);
   async function create() {

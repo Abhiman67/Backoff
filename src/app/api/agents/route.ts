@@ -20,6 +20,7 @@ export const GET = handleApi(async (_req, { userId: uid }) => {
     },
     orderBy: { createdAt: "asc" },
   });
+  if (new URL(_req.url).searchParams.get("view") === "roster") return NextResponse.json({ agents });
   const agentsWithContinuity = await Promise.all(agents.map(async (agent) => {
     const latest = await db.conversation.findFirst({
       where: { userId: uid, agentId: agent.id },

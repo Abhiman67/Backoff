@@ -33,7 +33,7 @@ export default function ResponsibilitiesPage() {
     try {
       const [rRes, aRes] = await Promise.all([
         fetch("/api/responsibilities", { cache: "no-store" }),
-        fetch("/api/agents", { cache: "no-store" }),
+        fetch("/api/agents?view=roster", { cache: "no-store" }),
       ]);
       if (!rRes.ok) throw new Error("Could not load routines.");
       setRoutines((await rRes.json()).responsibilities ?? []);

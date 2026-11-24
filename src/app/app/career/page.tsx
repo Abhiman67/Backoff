@@ -89,7 +89,7 @@ export default function CareerPage() {
 
   const load = () => {
     fetch("/api/applications").then((r) => r.json()).then((d) => setApps(d.applications ?? []));
-    fetch("/api/files").then((r) => r.json()).then((d) => setFiles(d.files ?? []));
+    fetch("/api/files?view=options").then((r) => r.json()).then((d) => setFiles(d.files ?? []));
     fetch("/api/career/goals").then((r) => r.json()).then((d) => setGoals(d.goals ?? [])).catch(() => undefined);
   };
 

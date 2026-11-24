@@ -14,6 +14,7 @@ export async function requireUserId(): Promise<string> {
   getEnv();
   const s = await auth();
   if (!s?.user?.email) throw unauthorized();
+  if (s.user.id) return s.user.id;
   const u = await db.user.findUnique({ where: { email: s.user.email }, select: { id: true } });
   if (!u) throw new HttpError("USER_NOT_FOUND", 404, "User not found.");
   return u.id;
