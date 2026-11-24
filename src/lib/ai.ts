@@ -207,6 +207,48 @@ export async function* streamAi(input: ChatInput): AsyncIterable<ChatEvent> {
         parts: [{ text: `${input.system}\n\nWorkspace context (untrusted reference data):\n${input.context || "None"}` }],
       };
 
+      if (input.output?.kind === "workspace_plan") {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+              body: JSON.stringify({ contents, systemInstruction, generationConfig: {
+                responseMimeType: "application/json",
+                ...(input.output.kind === "workspace_plan" ? { responseSchema: {
+                  type: "OBJECT", required: ["finding", "task"], properties: {
+                    finding: { type: "STRING", description: "A concise finding, at most 600 characters." },
+                    task: { type: "OBJECT", nullable: true, required: ["title"], properties: {
+                      title: { type: "STRING" }, priority: { type: "STRING", enum: ["low", "medium", "high"] },
+                    } },
+                  },
+                } } : {}),
+              } }),
+              signal: controller.signal,
+            },
+          );
+          if (!response.ok) {
+            yield { type: "error", message: `AI provider request failed (${response.status}). Please retry.` };
+            return;
+          }
+          const result = await response.json();
+          const text = (result.candidates?.[0]?.content?.parts ?? [])
+            .filter((part: { thought?: boolean; text?: string }) => !part.thought && typeof part.text === "string")
+            .map((part: { text: string }) => part.text).join("");
+          if (!text) {
+            yield { type: "error", message: "The AI provider returned an empty plan. Please retry." };
+            return;
+          }
+          yield { type: "message_delta", text };
+          yield { type: "done", messageId: "gemini-structured" };
+          await trackAiCall({ provider: "gemini", durationMs: Date.now() - started, ok: true });
+          return;
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
         {
@@ -214,9 +256,7 @@ export async function* streamAi(input: ChatInput): AsyncIterable<ChatEvent> {
           headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
           body: JSON.stringify({
             contents, systemInstruction,
-            ...(input.output && { generationConfig: {
-              responseMimeType: "application/json",
-            } }),
+            ...(input.output && { generationConfig: { responseMimeType: "application/json" } }),
           }),
           signal: controller.signal,
         }
