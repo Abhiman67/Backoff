@@ -216,11 +216,6 @@ export async function* streamAi(input: ChatInput): AsyncIterable<ChatEvent> {
             contents, systemInstruction,
             ...(input.output && { generationConfig: {
               responseMimeType: "application/json",
-              responseSchema: {
-                type: "OBJECT",
-                properties: { sessions: { type: "ARRAY", items: { type: "STRING" }, minItems: 3, maxItems: 3 } },
-                required: ["sessions"],
-              },
             } }),
           }),
           signal: controller.signal,

@@ -221,7 +221,7 @@ describe("responsibilities: schedule → run → notify, pause-all", () => {
       data: {
         ownerId: uid1, agentId, title: "Daily check",
         instruction: "Create a task to review notes", triggerType: "schedule",
-        triggerValue: "daily", actionPolicy: "suggest_only",
+        triggerValue: "daily", actionPolicy: "approval_required",
         nextRunAt: new Date(Date.now() - 1000),
       },
     });

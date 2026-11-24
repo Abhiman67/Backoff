@@ -39,13 +39,15 @@ export function ClassroomDashboard({
   const [materialsMessage, setMaterialsMessage] = useState("");
   const [importingFile, setImportingFile] = useState("");
   const [importedFiles, setImportedFiles] = useState<string[]>([]);
+  const [importFileStatuses, setImportFileStatuses] = useState<Record<string, string>>({});
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [lastSyncError, setLastSyncError] = useState("");
 
   useEffect(() => {
     if (!connectedState) return;
     void fetch("/api/integrations/classroom", { cache: "no-store" })
       .then((response) => response.ok ? response.json() : null)
-      .then((status) => { if (status?.lastSyncedAt) setLastSyncedAt(status.lastSyncedAt); })
+      .then((status) => { if (status?.lastSyncedAt) setLastSyncedAt(status.lastSyncedAt); if (status?.lastSyncError) setLastSyncError(status.lastSyncError); })
       .catch(() => undefined);
   }, [connectedState]);
 
@@ -68,7 +70,7 @@ export function ClassroomDashboard({
         const syncData = await syncResponse.json();
         if (!syncResponse.ok) throw new Error(syncData.error?.message ?? "Coursework could not be added to your plan.");
         if (!cancelled) setSyncMessage(`${syncData.synced ?? 0} coursework items synced to your plan.`);
-        if (!cancelled) setLastSyncedAt(new Date().toISOString());
+        if (!cancelled) { setLastSyncedAt(new Date().toISOString()); setLastSyncError(""); }
         const materialsResponse = await fetch("/api/integrations/classroom/materials", { cache: "no-store" });
         const materialsData = await materialsResponse.json();
         if (!materialsResponse.ok) {
@@ -76,10 +78,15 @@ export function ClassroomDashboard({
         } else if (!cancelled) {
           setMaterials(materialsData.materials ?? []);
           setImportedFiles(materialsData.importedDriveFileIds ?? []);
+          setImportFileStatuses(Object.fromEntries((materialsData.importedFiles ?? []).map((file: { driveFileId: string; status: string }) => [file.driveFileId, file.status])));
           setMaterialsMessage(materialsData.restrictedCourseCount ? `Google restricted standalone materials in ${materialsData.restrictedCourseCount} course(s). Assignment attachments may still appear here.` : "");
         }
       } catch (cause) {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Courses could not be synced. Try reconnecting Classroom.");
+        if (!cancelled) {
+          const message = cause instanceof Error ? cause.message : "Courses could not be synced. Try reconnecting Classroom.";
+          setError(message);
+          setLastSyncError(message);
+        }
       } finally {
         if (!cancelled) setIsSyncing(false);
       }
@@ -98,8 +105,18 @@ export function ClassroomDashboard({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? "Could not import this Classroom file.");
-      setImportedFiles((current) => current.includes(driveFileId) ? current : [...current, driveFileId]);
-      setMaterialsMessage(data.alreadyImported ? "This file is already in Files & notes." : "File imported. VidyaSarthi is preparing it for your notes and agents.");
+      let fileStatus: string = data.file.status;
+      if (["uploaded", "processing"].includes(fileStatus) && data.file.id) {
+        for (let attempt = 0; attempt < 5 && ["uploaded", "processing"].includes(fileStatus); attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+          const fileResponse = await fetch(`/api/files/${data.file.id}`, { cache: "no-store" });
+          const fileData = await fileResponse.json();
+          if (fileResponse.ok) fileStatus = fileData.file.status;
+        }
+      }
+      setImportFileStatuses((current) => ({ ...current, [driveFileId]: fileStatus }));
+      setImportedFiles((current) => fileStatus === "failed" ? current.filter((id) => id !== driveFileId) : current.includes(driveFileId) ? current : [...current, driveFileId]);
+      setMaterialsMessage(fileStatus === "ready" ? "File is ready in Files & notes." : fileStatus === "failed" ? "The file was imported but could not be processed. Retry it here or check Files & notes." : data.alreadyImported ? "File processing restarted. It will appear in Files & notes when ready." : "File imported. VidyaSarthi is preparing it for your notes and agents.");
     } catch (cause) {
       setMaterialsMessage(cause instanceof Error ? cause.message : "Could not import this Classroom file.");
     } finally {
@@ -118,9 +135,12 @@ export function ClassroomDashboard({
       if (!response.ok) throw new Error(data.error?.message ?? "Coursework could not be synced.");
       setSyncMessage(`${data.synced ?? 0} coursework items synced to your plan. ${data.notified ?? 0} new notifications.`);
       setLastSyncedAt(new Date().toISOString());
+      setLastSyncError("");
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Coursework could not be synced. Try again.");
+      const message = cause instanceof Error ? cause.message : "Coursework could not be synced. Try again.";
+      setError(message);
+      setLastSyncError(message);
     } finally {
       setIsSyncing(false);
     }
@@ -368,6 +388,7 @@ export function ClassroomDashboard({
                 <p className="grok-section-sub">
                   Connection active · <span className="tag" style={{ fontSize: 10 }}>{isSyncing ? "Syncing…" : isDemo ? "Preview courses" : "Read-only sync"}</span>{lastSyncedAt && <> · Last synced {new Date(lastSyncedAt).toLocaleString()}</>}
                 </p>
+                {lastSyncError && <p role="alert" className="classroom-materials-message">Latest sync failed: {lastSyncError}. Your saved tasks were not replaced.</p>}
               </div>
             </div>
             <div className="grok-classroom-header-actions">
@@ -444,6 +465,7 @@ export function ClassroomDashboard({
                   if (!response.ok) throw new Error(data.error?.message ?? "Materials could not be refreshed.");
                   setMaterials(data.materials ?? []);
                   setImportedFiles(data.importedDriveFileIds ?? []);
+                  setImportFileStatuses(Object.fromEntries((data.importedFiles ?? []).map((file: { driveFileId: string; status: string }) => [file.driveFileId, file.status])));
                 } catch (cause) { setMaterialsMessage(cause instanceof Error ? cause.message : "Materials could not be refreshed."); }
               }}>Refresh materials</button>
             </div>
@@ -452,11 +474,12 @@ export function ClassroomDashboard({
             {materials.length > 0 && <ul className="classroom-materials-list">{materials.map((material) => {
               const imported = material.driveFileId && importedFiles.includes(material.driveFileId);
               const driveFileId = material.driveFileId;
+              const fileStatus = driveFileId ? importFileStatuses[driveFileId] : undefined;
               return <li key={`${material.courseId}:${material.id}`} className="classroom-material-row">
                 <div className="classroom-material-copy"><span className="classroom-material-kind">{material.kind}</span><strong>{material.title}</strong><span>{material.courseName} · {material.parentTitle}</span></div>
                 <div className="classroom-material-actions">
                   {material.url && <a href={material.url} target="_blank" rel="noreferrer" className="course-action-link">Open in Google ↗</a>}
-                  {driveFileId && <button type="button" className="grok-sync-btn" disabled={Boolean(importingFile) || Boolean(imported)} onClick={() => void importClassroomFile(driveFileId)}>{importingFile === driveFileId ? "Importing…" : imported ? "Imported" : "Import to VidyaSarthi"}</button>}
+                  {driveFileId && <button type="button" className="grok-sync-btn" disabled={Boolean(importingFile) || Boolean(imported && fileStatus !== "failed")} onClick={() => void importClassroomFile(driveFileId)}>{importingFile === driveFileId ? "Importing…" : fileStatus === "failed" ? "Retry processing" : fileStatus === "uploaded" || fileStatus === "processing" ? "Preparing…" : imported ? "Imported" : "Import to VidyaSarthi"}</button>}
                 </div>
               </li>;
             })}</ul>}

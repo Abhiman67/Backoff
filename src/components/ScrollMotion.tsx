@@ -25,11 +25,12 @@ export default function ScrollMotion() {
       els.forEach((el) => el.classList.add("in"));
       document.querySelectorAll(".reveal-child").forEach((c) => c.classList.add("in"));
     };
+    let sectionObserver: IntersectionObserver | null = null;
     let childObserver: IntersectionObserver | null = null;
     if (reduced || !("IntersectionObserver" in window)) {
       showAll();
     } else {
-      const io = new IntersectionObserver(
+      const io = sectionObserver = new IntersectionObserver(
         (entries) => {
           for (const e of entries) {
             if (e.isIntersecting) {
@@ -40,7 +41,11 @@ export default function ScrollMotion() {
         },
         { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
       );
-      els.forEach((el) => io.observe(el));
+      els.forEach((el) => {
+        if (el.getBoundingClientRect().top < window.innerHeight) el.classList.add("in");
+        else el.classList.add("motion-pending");
+        io.observe(el);
+      });
       document.querySelectorAll<HTMLElement>("[data-stagger]").forEach((parent) => {
         Array.from(parent.children).forEach((child, i) => {
           const c = child as HTMLElement;
@@ -209,6 +214,8 @@ export default function ScrollMotion() {
     }
 
     return () => {
+      sectionObserver?.disconnect();
+      childObserver?.disconnect();
       window.removeEventListener("scroll", onScroll);
       cancelAnimationFrame(raf);
       if (typeof cleanupTimers !== "undefined") cleanupTimers();

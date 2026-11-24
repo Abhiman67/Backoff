@@ -16,15 +16,23 @@ export default function ForgotPage() {
   async function request(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
-    const r = await fetch("/api/auth/password-reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (d.devToken) setToken(d.devToken);
-    setSent(true);
-    setMessage("If an account exists for that email, reset instructions are ready. Links expire in 30 minutes and work once.");
+    try {
+      const r = await fetch("/api/auth/password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMessage(d.error ?? "Couldn’t request a reset link. Please try again.");
+        return;
+      }
+      if (d.devToken) setToken(d.devToken);
+      setSent(true);
+      setMessage("If an account exists for that email, reset instructions will be sent. Links expire in 30 minutes.");
+    } catch {
+      setMessage("Couldn’t connect. Please try again.");
+    }
   }
 
   async function reset(e: React.FormEvent) {

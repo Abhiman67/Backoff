@@ -9,8 +9,7 @@ export const GET = handleApi(async (_req, { userId }) => {
   const [messageQuota, fileQuota] = await Promise.all([getQuota(userId, "messages"), getQuota(userId, "files")]);
   const agents = await db.agent.count({ where: { ownerId: userId } });
   return NextResponse.json({
-    plan: "Student Pro (MVP)",
-    renewal: "No billing in MVP",
+    plan: messageQuota.plan === "pro" ? "Student Pro" : "Starter",
     agents,
     ...usage,
     limits: { agents: "unlimited", messages: messageQuota, files: fileQuota },

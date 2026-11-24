@@ -15,18 +15,17 @@ export function cancelJob(idempotencyKey: string) {
   cancelled.add(idempotencyKey);
 }
 
-async function runWithTimeout<T>(type: JobType, fn: () => Promise<T>): Promise<T> {
-  const max = MAX_EXECUTION_MS[type] ?? 60_000;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+async function runWithDeadline(job: Job, handler: JobHandler<Record<string, unknown>>) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error("Job deadline exceeded"));
+    logError("job.deadline", { jobId: job.id, type: job.type });
+  }, MAX_EXECUTION_MS[job.type]);
   try {
-    return await Promise.race([
-      fn(),
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Job timed out after ${max}ms`)), max);
-      }),
-    ]);
+    // Retain ownership until the handler settles, including non-interruptible writes.
+    await handler({ ...job, signal: controller.signal });
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 
@@ -39,7 +38,7 @@ export async function runHandler(job: Job<Record<string, unknown>>): Promise<voi
   const handler = handlers.get(job.type);
   if (!handler) throw new Error(`No handler for job type ${job.type}`);
   if (cancelled.has(job.idempotencyKey)) throw new Error("Job cancelled");
-  await runWithTimeout(job.type, () => handler(job));
+  await runWithDeadline(job, handler);
 }
 
 export async function enqueue<T extends Record<string, unknown>>(
@@ -94,7 +93,7 @@ async function processJob<T extends Record<string, unknown>>(job: Job<T>): Promi
   const started = Date.now();
   try {
     if (cancelled.has(job.idempotencyKey)) throw new Error("Job cancelled");
-    await runWithTimeout(job.type, () => handler(job as Job<Record<string, unknown>>));
+    await runWithDeadline(job, handler);
     await db.jobRecord.update({ where: { idempotencyKey: job.idempotencyKey }, data: { status: "completed" } });
     logInfo("job.completed", { type: job.type, key: job.idempotencyKey, durationMs: Date.now() - started });
     return { deduped: false, key: job.idempotencyKey, status: "completed" };
@@ -123,8 +122,24 @@ export async function retryJob(idempotencyKey: string) {
   if (!["dead_letter", "failed", "retrying"].includes(rec.status)) throw new Error(`Cannot retry job in ${rec.status}`);
   const handler = handlers.get(rec.type as JobType);
   if (!handler) throw new Error("No handler");
-  await db.jobRecord.update({ where: { idempotencyKey }, data: { status: "queued", lastError: null, nextAttemptAt: null } });
+  const claim = await db.jobRecord.updateMany({
+    where: { id: rec.id, updatedAt: rec.updatedAt, status: rec.status },
+    data: { status: "queued", lastError: null, nextAttemptAt: null },
+  });
+  if (!claim.count) return;
   return processJob({ id: rec.id, type: rec.type as JobType, payload: JSON.parse(rec.payload || "{}"), idempotencyKey, retries: rec.retries, maxRetries: rec.maxRetries, createdAt: rec.createdAt });
+}
+
+export async function retryDueInlineJobs() {
+  if (getJobMode() === "inline") {
+    const due = await db.jobRecord.findMany({
+      where: { status: "retrying", nextAttemptAt: { lte: new Date() } },
+      orderBy: { nextAttemptAt: "asc" }, take: 50, select: { idempotencyKey: true },
+    });
+    for (const job of due) {
+      await retryJob(job.idempotencyKey).catch(() => logError("job.retry.failed", { key: job.idempotencyKey }));
+    }
+  }
 }
 
 export function __resetJobsForTests() {

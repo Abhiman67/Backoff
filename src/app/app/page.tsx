@@ -1,6 +1,6 @@
-import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/current-user";
 import Link from "next/link";
 import { ClassroomDashboard } from "@/components/ClassroomDashboard";
 import { FocusTask } from "@/components/FocusTask";
@@ -10,9 +10,7 @@ import { Recommendations } from "@/components/Recommendations";
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 export default async function AppHome() {
-  const session = await auth();
-  if (!session?.user?.email) redirect("/login");
-  const user = await db.user.findUnique({ where: { email: session.user.email }, include: { profile: true } });
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (!user.profile?.onboardingDone) redirect("/onboarding");
 
@@ -21,16 +19,17 @@ export default async function AppHome() {
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
-  const [tasks, projects, agents, apps, files, notes, doneCount, pendingApprovals, activity] = await Promise.all([
-    db.task.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "desc" }, take: 20 }),
-    db.project.findMany({ where: { ownerId: user.id }, include: { tasks: true }, orderBy: { updatedAt: "desc" }, take: 3 }),
-    db.agent.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "asc" }, take: 6 }),
-    db.application.findMany({ where: { ownerId: user.id }, take: 50 }),
-    db.file.findMany({ where: { ownerId: user.id, status: { not: "deleted" } }, orderBy: { createdAt: "desc" }, take: 5 }),
-    db.file.findMany({ where: { ownerId: user.id, mimeType: "text/markdown", status: { not: "deleted" } }, orderBy: { createdAt: "desc" }, take: 3 }),
+  const [tasks, projects, agents, apps, files, notes, doneCount, pendingApprovals, activity, classroomAccount] = await Promise.all([
+    db.task.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "desc" }, take: 20, select: { id: true, title: true, priority: true, status: true, dueDate: true } }),
+    db.project.findMany({ where: { ownerId: user.id }, orderBy: { updatedAt: "desc" }, take: 3, select: { id: true, name: true, type: true, tasks: { select: { status: true } } } }),
+    db.agent.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "asc" }, take: 6, select: { id: true, template: true } }),
+    db.application.findMany({ where: { ownerId: user.id }, take: 50, select: { status: true } }),
+    db.file.findMany({ where: { ownerId: user.id, status: { not: "deleted" } }, orderBy: { createdAt: "desc" }, take: 5, select: { id: true, name: true, status: true, size: true } }),
+    db.file.findMany({ where: { ownerId: user.id, mimeType: "text/markdown", status: { not: "deleted" } }, orderBy: { createdAt: "desc" }, take: 3, select: { name: true } }),
     db.task.count({ where: { ownerId: user.id, status: "completed" } }),
-    db.approval.findMany({ where: { ownerId: user.id, status: "pending" }, orderBy: { createdAt: "desc" }, take: 5 }),
-    db.auditEvent.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "desc" }, take: 8 }),
+    db.approval.findMany({ where: { ownerId: user.id, status: "pending" }, orderBy: { createdAt: "desc" }, take: 5, select: { id: true, title: true, description: true } }),
+    db.auditEvent.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, action: true, createdAt: true } }),
+    db.integrationAccount.findUnique({ where: { ownerId_provider: { ownerId: user.id, provider: "classroom" } }, select: { id: true } }),
   ]);
 
   const now = Date.now(); // eslint-disable-line -- server component: evaluated once per request, not re-rendered
@@ -43,10 +42,6 @@ export default async function AppHome() {
 
   const studyCoach = agents.find((a) => a.template === "study-coach");
   const planningAgent = studyCoach ?? agents[0];
-  const classroomAccount = await db.integrationAccount.findUnique({
-    where: { ownerId_provider: { ownerId: user.id, provider: "classroom" } },
-  });
-
   const step1Done = files.length > 0;
   const step2Done = tasks.length > 0 || doneCount > 0;
   const step3Done = projects.length > 0;

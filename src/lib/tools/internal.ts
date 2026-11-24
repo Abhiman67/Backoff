@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { db } from "@/lib/db";
+import { db as client } from "@/lib/db";
 import type { AgentTool, ToolContext } from "./types";
 import { createTaskTool, updateTaskTool } from "./internal/tasks";
 
@@ -9,6 +9,7 @@ const getProfileTool: AgentTool<Record<string, never>, Record<string, unknown>> 
   risk: "read_only",
   inputSchema: z.object({}),
   execute: async (_input, ctx) => {
+    const db = ctx.tx ?? client;
     const p = await db.profile.findUnique({ where: { userId: ctx.ownerId } });
     return { institution: p?.institution ?? null, degree: p?.degree ?? null, careerTarget: p?.careerTarget ?? null };
   },
@@ -20,6 +21,7 @@ const searchFilesTool: AgentTool<{ query: string }, { id: string; name: string }
   risk: "read_only",
   inputSchema: z.object({ query: z.string().min(1).max(200) }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const files = await db.file.findMany({ where: { ownerId: ctx.ownerId, status: "ready" }, take: 20 });
     const q = input.query.toLowerCase();
     return files
@@ -35,6 +37,7 @@ const getFileMetadataTool: AgentTool<{ fileId: string }, { id: string; name: str
   risk: "read_only",
   inputSchema: z.object({ fileId: z.string().min(1) }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const f = await db.file.findFirst({ where: { id: input.fileId, ownerId: ctx.ownerId } });
     if (!f) throw new Error("File not found");
     return { id: f.id, name: f.name, status: f.status };
@@ -47,6 +50,7 @@ const getProjectTool: AgentTool<{ projectId: string }, Record<string, unknown>> 
   risk: "read_only",
   inputSchema: z.object({ projectId: z.string().min(1) }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const p = await db.project.findFirst({ where: { id: input.projectId, ownerId: ctx.ownerId } });
     if (!p) throw new Error("Project not found");
     return { id: p.id, name: p.name, status: p.status, description: p.description.slice(0, 500) };
@@ -59,6 +63,7 @@ const getProjectTasksTool: AgentTool<{ projectId: string }, { id: string; title:
   risk: "read_only",
   inputSchema: z.object({ projectId: z.string().min(1) }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const p = await db.project.findFirst({ where: { id: input.projectId, ownerId: ctx.ownerId }, select: { id: true } });
     if (!p) throw new Error("Project not found");
     const tasks = await db.task.findMany({ where: { projectId: input.projectId, ownerId: ctx.ownerId }, take: 20 });
@@ -72,6 +77,7 @@ const createProjectTool: AgentTool<{ name: string; description?: string }, { id:
   risk: "workspace_write",
   inputSchema: z.object({ name: z.string().min(1).max(100), description: z.string().max(2000).optional() }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const p = await db.project.create({ data: { ownerId: ctx.ownerId, name: input.name.slice(0, 100), description: input.description?.slice(0, 2000) ?? "" } });
     return { id: p.id, name: p.name };
   },
@@ -87,6 +93,7 @@ const updateProjectTool: AgentTool<{ projectId: string; name?: string; status?: 
     status: z.enum(["active", "completed", "archived", "paused"]).optional(),
   }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const existing = await db.project.findFirst({ where: { id: input.projectId, ownerId: ctx.ownerId }, select: { id: true } });
     if (!existing) throw new Error("Project not found");
     const updated = await db.project.update({ where: { id: input.projectId }, data: { ...(input.name ? { name: input.name } : {}), ...(input.status ? { status: input.status } : {}) } });
@@ -100,6 +107,7 @@ const attachFileTool: AgentTool<{ projectId: string; fileId: string }, { ok: boo
   risk: "workspace_write",
   inputSchema: z.object({ projectId: z.string().min(1), fileId: z.string().min(1) }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const [p, f] = await Promise.all([
       db.project.findFirst({ where: { id: input.projectId, ownerId: ctx.ownerId } }),
       db.file.findFirst({ where: { id: input.fileId, ownerId: ctx.ownerId } }),
@@ -123,6 +131,7 @@ const createApprovalTool: AgentTool<{ title: string; description?: string }, { i
   risk: "read_only",
   inputSchema: z.object({ title: z.string().min(1).max(160), description: z.string().max(2000).optional() }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const a = await db.approval.create({
       data: { ownerId: ctx.ownerId, agentId: ctx.agentId, title: input.title, description: input.description ?? "", runId: ctx.runId },
     });

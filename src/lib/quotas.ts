@@ -13,6 +13,6 @@ export async function getQuota(ownerId: string, kind: "messages" | "files") {
   const limit = PLAN_LIMITS[plan][kind];
   const used = kind === "messages"
     ? await db.usageEvent.count({ where: { ownerId, type: "message" } })
-    : await db.file.count({ where: { ownerId } });
+    : await db.file.count({ where: { ownerId, status: { not: "deleted" } } });
   return { plan, used, limit, remaining: Math.max(0, limit - used), allowed: used < limit };
 }

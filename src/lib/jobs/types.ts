@@ -8,6 +8,7 @@ export type Job<T = Record<string, unknown>> = {
   retries: number;
   maxRetries: number;
   createdAt: Date;
+  signal?: AbortSignal;
 };
 
 export type JobHandler<T = Record<string, unknown>> = (job: Job<T>) => Promise<void>;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { signupSchema } from "@/lib/validations";
@@ -31,6 +32,10 @@ export async function POST(req: Request) {
       name, email: email.toLowerCase(), passwordHash, profile: { create: {} },
       memberships: { create: { role: "owner", workspace: { create: { name: `${name}'s workspace` } } } },
     },
+  }).catch((error: unknown) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return null;
+    throw error;
   });
+  if (!user) return NextResponse.json({ error: "Email already registered" }, { status: 409 });
   return NextResponse.json({ id: user.id }, { status: 201 });
 }

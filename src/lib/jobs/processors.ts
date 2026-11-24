@@ -36,6 +36,7 @@ registerHandler("file.extract", async (job) => {
         text = (await extractPdfText(bytes.buffer as ArrayBuffer)).slice(0, 20000);
       }
     }
+    job.signal?.throwIfAborted();
     if (!text.trim()) {
       await db.file.update({ where: { id: fileId }, data: { status: "failed", failureReason: failReason("EMPTY_TEXT") } });
       return;
@@ -63,6 +64,7 @@ registerHandler("file.chunk", async (job) => {
     await db.file.update({ where: { id: fileId }, data: { status: "failed", failureReason: failReason("EMPTY_TEXT") } });
     return;
   }
+  job.signal?.throwIfAborted();
   await db.fileChunk.deleteMany({ where: { fileId } });
   for (const c of chunks) {
     await db.fileChunk.create({ data: { fileId, ownerId, index: c.index, content: c.content.slice(0, 4000) } });
@@ -86,6 +88,7 @@ registerHandler("file.embed", async (job) => {
   } catch {
     logError("file.embed.failed", { fileId });
   }
+  job.signal?.throwIfAborted();
   if (embeddings) {
     await db.$transaction(chunks.map((chunk, index) => db.fileChunk.update({
       where: { id: chunk.id }, data: { embedding: embeddings[index] },

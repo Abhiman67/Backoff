@@ -5,7 +5,7 @@ import { QUEUE_NAME, getRedisUrl } from "@/lib/jobs/redis";
 
 export async function GET() {
   const start = performance.now();
-  let redis: { status: "connected" | "unavailable" | "not_configured"; latencyMs?: number; error?: string } = {
+  let redis: { status: "connected" | "unavailable" | "not_configured"; latencyMs?: number } = {
     status: "not_configured",
   };
   try {
@@ -20,11 +20,10 @@ export async function GET() {
       try {
         await queue.waitUntilReady();
         redis = { status: "connected", latencyMs: Math.round(performance.now() - redisStart) };
-      } catch (err) {
+      } catch {
         redis = {
           status: "unavailable",
           latencyMs: Math.round(performance.now() - redisStart),
-          error: err instanceof Error ? err.message : "Redis probe failed",
         };
       } finally {
         await queue.close();
@@ -36,7 +35,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: healthy,
-        service: "backoff",
+        service: "vidyasarthi",
         status: healthy ? "healthy" : "unhealthy",
         database: {
           status: "connected",
@@ -48,17 +47,16 @@ export async function GET() {
       },
       { status: healthy ? 200 : 503, headers: { "Cache-Control": "no-store" } }
     );
-  } catch (err) {
+  } catch {
     const latencyMs = Math.round(performance.now() - start);
     return NextResponse.json(
       {
         ok: false,
-        service: "backoff",
+        service: "vidyasarthi",
         status: "unhealthy",
         database: {
           status: "unavailable",
           latencyMs,
-          error: err instanceof Error ? err.message : "Database probe failed",
         },
         redis,
         uptimeSeconds: Math.floor(process.uptime()),

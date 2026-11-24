@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 
-export async function GET() {
-  const s = await auth();
-  if (!s?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json({ plan: "Student Pro (MVP)", status: "active", renewal: "No billing in MVP — upgrade is a stub." });
-}
+export { GET } from "../route";
 
 export async function POST(req: Request) {
   const s = await auth();

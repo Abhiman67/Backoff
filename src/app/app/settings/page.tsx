@@ -1,22 +1,11 @@
 import Link from "next/link";
-import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { PauseAllRoutines } from "@/components/PauseAllRoutines";
 import { NotificationPreferences } from "@/components/NotificationPreferences";
+import { getCurrentUser } from "@/lib/current-user";
 
 export default async function SettingsPage() {
-  const session = await auth();
-  const user = session?.user?.email
-    ? await db.user.findUnique({
-        where: { email: session.user.email },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          profile: true,
-        },
-      })
-    : null;
+  const user = await getCurrentUser();
 
   const [agentCount, fileCount, taskCount, subscription] = await Promise.all([
     user ? db.agent.count({ where: { ownerId: user.id } }) : 0,

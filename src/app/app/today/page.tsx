@@ -1,12 +1,10 @@
-import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { TodayPlan } from "@/components/TodayPlan";
+import { getCurrentUser } from "@/lib/current-user";
 
 export default async function TodayPage() {
-  const session = await auth();
-  if (!session?.user?.email) redirect("/login");
-  const user = await db.user.findUnique({ where: { email: session.user.email }, select: { id: true } });
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const now = new Date();

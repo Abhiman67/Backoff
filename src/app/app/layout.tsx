@@ -1,20 +1,13 @@
 import AppShell from "@/components/AppShell";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { auth } from "@/auth";
-import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/current-user";
 import { redirect } from "next/navigation";
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  const email = session?.user?.email;
-  if (!email) redirect("/login");
-  const account = await db.user.findUnique({
-    where: { email },
-    select: { name: true, email: true },
-  });
-  if (!account) redirect("/login");
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
   return (
-    <AppShell account={account}>
+    <AppShell account={{ name: user.name, email: user.email }}>
       <ErrorBoundary>{children}</ErrorBoundary>
     </AppShell>
   );

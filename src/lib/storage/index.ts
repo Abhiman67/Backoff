@@ -60,7 +60,7 @@ const remoteStorage: ObjectStorage = {
 
 export const objectStorage: ObjectStorage = bucket ? remoteStorage : {
   async put(key, data, contentType) {
-    if (process.env.NODE_ENV === "production") throw new Error("Configure S3_BUCKET before accepting production uploads.");
+    if (process.env.NODE_ENV === "production" && !process.env.LOCAL_STORAGE_DIR) throw new Error("Configure S3_BUCKET before accepting production uploads.");
     return localStorage.put(key, data, contentType);
   },
   get: (key) => localStorage.get(key),

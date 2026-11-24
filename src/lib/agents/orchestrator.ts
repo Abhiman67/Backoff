@@ -56,7 +56,10 @@ export async function planRun(runId: string, ownerId: string) {
   if (!run) throw new Error("Run not found");
   // Idempotent: never duplicate steps if planning retried or resumed.
   const existingSteps = await db.agentStep.findMany({ where: { runId }, orderBy: { sequence: "asc" } });
-  if (existingSteps.length > 0) return existingSteps;
+  if (existingSteps.length > 0) {
+    await db.agentRun.updateMany({ where: { id: runId, ownerId, status: "planning" }, data: { status: "running" } });
+    return existingSteps;
+  }
   // executeRun may already have moved queued → planning; tolerate that.
   if ((run.status as AgentRunStatus) === "queued") {
     await setRunStatus(runId, "queued", "planning", { startedAt: run.startedAt ?? new Date() });
@@ -114,10 +117,13 @@ export async function executeRun(runId: string, ownerId: string) {
     }
     try {
       await planRun(runId, ownerId);
-    } catch {
+    } catch (error) {
+      const reason = error !== null && typeof error === "object" && "message" in error ? String(error.message) : typeof error === "string" ? error : "The AI provider returned an unknown error.";
+      const failure = reason.slice(0, 240);
+      if (process.env.NODE_ENV !== "production") console.error("Agent workspace planning failed:", failure);
       await db.agentRun.updateMany({
         where: { id: runId, status: "planning" },
-        data: { status: "failed", errorMessage: "The agent could not review the workspace. Check the AI connection and retry." },
+        data: { status: "failed", errorMessage: failure },
       });
       return db.agentRun.findUniqueOrThrow({ where: { id: runId } });
     }

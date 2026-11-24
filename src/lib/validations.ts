@@ -73,6 +73,7 @@ export const applicationUpdateSchema = z.object({
   id: z.string().min(1),
   status: z.enum(["saved", "preparing", "applied", "interviewing", "offer", "rejected"]).optional(),
   notes: z.string().max(2000).optional(),
+  followUpDate: z.string().nullable().optional().refine((value) => !value || !Number.isNaN(Date.parse(value)), "Invalid follow-up date"),
 });
 
 export const approvalCreateSchema = z.object({

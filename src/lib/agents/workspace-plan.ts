@@ -8,8 +8,9 @@ import type { PlanStep } from "./types";
 
 const proposal = z.object({
   finding: z.string().trim().min(1).max(600),
-  task: createTaskInputSchema.pick({ title: true, priority: true }).nullable(),
+  task: z.unknown().optional(),
 });
+const suggestedTask = createTaskInputSchema.pick({ title: true, priority: true });
 
 export async function planWorkspaceRun(input: {
   userId: string;
@@ -49,14 +50,25 @@ ${input.canProposeTask ? "The application may ask the student to approve a task.
     }),
     history: [],
   })) {
-    if (event.type === "error") throw new Error("The AI provider could not complete this run.");
+    if (event.type === "error") throw new Error(event.message);
     if (event.type === "done" && event.messageId === "mock-workspace-plan" && input.canProposeTask) return buildPlan(input.currentGoal);
     if (event.type === "message_delta") reply += event.text;
     if (reply.length > 4000) throw new Error("The agent plan exceeded its response limit.");
   }
-  const parsed = proposal.safeParse(JSON.parse(reply.trim().replace(/^\x60{3}(?:json)?\s*|\s*\x60{3}$/gi, "")));
-  if (!parsed.success) throw new Error("The AI provider returned an invalid plan.");
-  const { finding, task } = parsed.data;
+  let raw: unknown;
+  try { raw = JSON.parse(reply.trim().replace(/^\x60{3}(?:json)?\s*|\s*\x60{3}$/gi, "")); }
+  catch { throw new Error("The AI provider returned a plan that was not valid JSON."); }
+  const parsed = proposal.safeParse(raw);
+  if (!parsed.success) {
+    const fields = parsed.error.issues.map((issue) => `${issue.path.join(".") || "response"}:${issue.code}`).join(", ");
+    const shape = raw !== null && typeof raw === "object" && !Array.isArray(raw)
+      ? Object.entries(raw).map(([key, value]) => `${key}:${Array.isArray(value) ? "array" : value === null ? "null" : typeof value}`).join(", ")
+      : Array.isArray(raw) ? "array" : typeof raw;
+    throw new Error(`The AI provider returned an invalid plan (${fields || "unexpected format"}; received ${shape}).`);
+  }
+  const taskResult = parsed.data.task == null ? null : suggestedTask.safeParse(parsed.data.task);
+  const task = taskResult?.success ? taskResult.data : null;
+  const { finding } = parsed.data;
   const steps: PlanStep[] = [{ kind: "draft", title: "Workspace findings", description: finding, requiresApproval: false }];
   if (input.canProposeTask && task) {
     steps.push({

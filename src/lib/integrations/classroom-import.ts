@@ -11,9 +11,15 @@ const ALLOWED = [".pdf", ".txt", ".md", ".docx"];
 
 async function prepareClassroomFile(file: File) {
   if (file.status === "deleted") throw new HttpError("CLASSROOM_FILE_REMOVED", 409, "This file was removed from Files & notes.");
-  if (file.status === "uploaded") {
+  let queuedFile = file;
+  const retrying = file.status === "failed";
+  if (retrying && file.storageKey) {
+    const retried = await db.file.updateMany({ where: { id: file.id, ownerId: file.ownerId, status: "failed", storageKey: { not: null } }, data: { status: "uploaded", failureReason: null, textContent: "" } });
+    if (retried.count) queuedFile = await db.file.findUniqueOrThrow({ where: { id: file.id } });
+  }
+  if (queuedFile.status === "uploaded") {
     const result = await enqueue("file.extract", { fileId: file.id, ownerId: file.ownerId }, {
-      idempotencyKey: `file.extract:${file.id}`, maxRetries: 0,
+      idempotencyKey: retrying ? `file.extract:${file.id}:classroom-retry:${Date.now()}` : `file.extract:${file.id}`, maxRetries: 0,
     });
     if (result.status === "dead_letter") {
       await db.file.updateMany({ where: { id: file.id, status: "uploaded" }, data: { status: "failed", failureReason: "EXTRACT_FAILED" } });

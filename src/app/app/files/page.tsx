@@ -4,6 +4,12 @@ import Link from "next/link";
 import { ConfirmDialog } from "@/components/Dialog";
 
 type FileRow = { id: string; name: string; status: string; size: number; failureReason?: string | null };
+type StudyAction = "summarize" | "flashcards" | "quiz";
+const studyActions: { action: StudyAction; label: string }[] = [
+  { action: "summarize", label: "Summarize" },
+  { action: "flashcards", label: "Flashcards" },
+  { action: "quiz", label: "Quiz" },
+];
 
 type StudyData = {
   mode?: "ai" | "extractive" | "unavailable";
@@ -161,6 +167,8 @@ export default function FilesPage() {
   const [openPreview, setOpenPreview] = useState<string | null>(null);
   const [activeStudy, setActiveStudy] = useState<Record<string, string | null>>({});
   const [studyData, setStudyData] = useState<Record<string, StudyData>>({});
+  const [studyLoading, setStudyLoading] = useState<Record<string, boolean>>({});
+  const [studyErrors, setStudyErrors] = useState<Record<string, string>>({});
   const [fileToDelete, setFileToDelete] = useState<FileRow | null>(null);
   const [deletingFile, setDeletingFile] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(true);
@@ -183,7 +191,6 @@ export default function FilesPage() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
@@ -228,23 +235,36 @@ export default function FilesPage() {
     }
   }
 
-  async function toggleStudy(id: string, action: string) {
+  async function loadStudy(id: string, action: StudyAction) {
+    const cacheKey = `${id}:${action}`;
+    if (studyLoading[cacheKey]) return;
+    setStudyLoading((current) => ({ ...current, [cacheKey]: true }));
+    setStudyErrors((current) => ({ ...current, [cacheKey]: "" }));
+    try {
+      const response = await fetch(`/api/files/${id}/study`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error?.message ?? "Study material could not be generated. Please retry.");
+      setStudyData((current) => ({ ...current, [cacheKey]: data }));
+    } catch (cause) {
+      setStudyErrors((current) => ({ ...current, [cacheKey]: cause instanceof Error ? cause.message : "Study material could not be generated. Please retry." }));
+    } finally {
+      setStudyLoading((current) => ({ ...current, [cacheKey]: false }));
+    }
+  }
+
+  async function toggleStudy(id: string, action: StudyAction) {
     const current = activeStudy[id];
     if (current === action) {
       setActiveStudy((s) => ({ ...s, [id]: null }));
       return;
     }
     setActiveStudy((s) => ({ ...s, [id]: action }));
-    const cacheKey = id + ":" + action;
-    if (!studyData[cacheKey]) {
-      const res = await fetch(`/api/files/${id}/study`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      setStudyData((s) => ({ ...s, [cacheKey]: data }));
-    }
+    const cacheKey = `${id}:${action}`;
+    if (!studyData[cacheKey] && !studyLoading[cacheKey]) await loadStudy(id, action);
   }
 
   async function togglePreview(id: string) {
@@ -352,19 +372,16 @@ export default function FilesPage() {
                     >
                       {openPreview === f.id ? "Close preview" : "Preview"}
                     </button>
-                    {[
-                      ["summarize", "Summarize"],
-                      ["flashcards", "Flashcards"],
-                      ["quiz", "Quiz"],
-                    ].map(([action, title]) => (
+                    {studyActions.map(({ action, label }) => (
                       <button
                         key={action}
                         type="button"
                         onClick={() => toggleStudy(f.id, action)}
                         className="file-action"
                         aria-pressed={activeAction === action}
+                        disabled={Boolean(studyLoading[`${f.id}:${action}`])}
                       >
-                        {title}
+                        {studyLoading[`${f.id}:${action}`] ? action === "summarize" ? "Summarizing…" : action === "flashcards" ? "Making cards…" : "Making quiz…" : label}
                       </button>
                     ))}
                     <Link href="/app/agents" className="file-action file-action-primary">Ask an agent</Link>
@@ -399,8 +416,12 @@ export default function FilesPage() {
                 </div>
               )}
 
-              {activeAction && currentStudy && (
+              {activeAction && (
                 <div style={{ marginLeft: 46 }}>
+                  {!currentStudy && studyLoading[`${f.id}:${activeAction}`] && <p role="status" aria-live="polite" className="files-list-message">{activeAction === "summarize" ? "Creating a source-grounded summary…" : activeAction === "flashcards" ? "Creating flashcards from this file…" : "Building a quiz from this file…"}</p>}
+                  {!currentStudy && studyErrors[`${f.id}:${activeAction}`] && <div className="files-list-message" role="alert"><span>{studyErrors[`${f.id}:${activeAction}`]}</span><button type="button" className="files-retry" disabled={Boolean(studyLoading[`${f.id}:${activeAction}`])} onClick={() => void loadStudy(f.id, activeAction as StudyAction)}>Try again</button></div>}
+                  {currentStudy?.mode === "unavailable" && <p className="files-list-message" role="status">{currentStudy.summary ?? "This file does not have enough extracted text yet. Run OCR or upload a text version before using study tools."}</p>}
+                  {currentStudy && currentStudy.mode !== "unavailable" && <>
                   {activeAction === "summarize" && (
                     <div style={{ marginTop: 10, padding: 14, background: "var(--color-paper)", borderRadius: 14, border: "1px solid var(--color-line)" }}>
                       <p style={{ fontSize: 13, fontWeight: 700, margin: "0 0 6px" }}>Key Summary <span className="tag" style={{ marginLeft: 6 }}>{studyModeLabel(currentStudy.mode)}</span></p>
@@ -422,6 +443,7 @@ export default function FilesPage() {
                   {activeAction === "quiz" && (
                     <><span className="tag" style={{ marginLeft: 0 }}>{studyModeLabel(currentStudy.mode)}</span><QuizDeck questions={currentStudy.quiz ?? []} /></>
                   )}
+                  </>}
                 </div>
               )}
             </div>

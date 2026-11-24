@@ -3,6 +3,7 @@ import { z } from "zod";
 export type ToolRisk = "read_only" | "draft_only" | "workspace_write" | "external_write" | "destructive";
 
 export type ToolContext = {
+  tx?: import("@prisma/client").Prisma.TransactionClient;
   ownerId: string;
   agentId: string;
   runId?: string;

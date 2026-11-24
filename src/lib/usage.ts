@@ -17,7 +17,7 @@ export async function getUsage(ownerId: string) {
   const conversations = await db.message.count({
     where: { conversation: { userId: ownerId } },
   });
-  const files = await db.file.count({ where: { ownerId } });
+  const files = await db.file.count({ where: { ownerId, status: { not: "deleted" } } });
   return {
     byType: Object.fromEntries(events.map((e: { type: string; _count: { type: number } }) => [e.type, e._count.type])),
     conversations,

@@ -1,3 +1,4 @@
+import MobilePublicMenu from "@/components/MobilePublicMenu";
 import Link from "next/link";
 import { LogoMark } from "@/components/Logo";
 import ScrollMotion from "@/components/ScrollMotion";
@@ -20,17 +21,14 @@ export default function PublicChrome({ children }: { children: React.ReactNode }
             <Link href="/login" className="signin">Sign in</Link>
             <Link className="nav-cta" href="/signup">Build your team ↗</Link>
           </div>
-          <details className="mobile-menu">
-            <summary aria-label="Open menu">☰</summary>
-            <div className="mobile-panel">
-              <Link href="/agents">Agents</Link>
-              <Link href="/how-it-works">How it works</Link>
-              <Link href="/pricing">Pricing</Link>
-              <Link href="/#faq">FAQ</Link>
-              <Link href="/login">Sign in</Link>
-              <Link className="nav-cta" href="/signup">Build your team ↗</Link>
-            </div>
-          </details>
+          <MobilePublicMenu>
+            <Link href="/agents">Agents</Link>
+            <Link href="/how-it-works">How it works</Link>
+            <Link href="/pricing">Pricing</Link>
+            <Link href="/#faq">FAQ</Link>
+            <Link href="/login">Sign in</Link>
+            <Link className="nav-cta" href="/signup">Build your team ↗</Link>
+          </MobilePublicMenu>
         </nav>
       </header>
       <main id="main">{children}</main>

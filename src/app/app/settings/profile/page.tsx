@@ -248,14 +248,16 @@ export default function ProfileSettings() {
           {status}
         </p>
 
-        <button
-          type="submit"
-          disabled={!dirty || saving}
-          className="button primary sm"
-          style={{ width: "100%", justifyContent: "center" }}
-        >
-          {saving ? "Saving changes…" : "Save profile"}
-        </button>
+        {(dirty || saving) && (
+          <button
+            type="submit"
+            disabled={saving}
+            className="button primary sm"
+            style={{ width: "100%", justifyContent: "center" }}
+          >
+            {saving ? "Saving changes…" : "Save changes"}
+          </button>
+        )}
       </form>
     </main>
   );

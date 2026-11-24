@@ -1,3 +1,4 @@
+import MobilePublicMenu from "@/components/MobilePublicMenu";
 import Link from "next/link";
 import { LogoMark } from "@/components/Logo";
 import ScrollMotion from "@/components/ScrollMotion";
@@ -50,17 +51,14 @@ export default function Home() {
             <Link href="/login" className="signin">Sign in</Link>
             <Link className="nav-cta" href="/signup">Create workspace ↗</Link>
           </div>
-          <details className="mobile-menu">
-            <summary aria-label="Open menu">☰</summary>
-            <div className="mobile-panel">
-              <Link href="/agents">Agents</Link>
-              <Link href="/how-it-works">How it works</Link>
-              <Link href="/pricing">Pricing</Link>
-              <Link href="#faq">FAQ</Link>
-              <Link href="/login">Sign in</Link>
-              <Link className="nav-cta" href="/signup">Create workspace ↗</Link>
-            </div>
-          </details>
+          <MobilePublicMenu>
+            <Link href="/agents">Agents</Link>
+            <Link href="/how-it-works">How it works</Link>
+            <Link href="/pricing">Pricing</Link>
+            <Link href="#faq">FAQ</Link>
+            <Link href="/login">Sign in</Link>
+            <Link className="nav-cta" href="/signup">Create workspace ↗</Link>
+          </MobilePublicMenu>
         </nav>
       </header>
 
@@ -218,10 +216,10 @@ export default function Home() {
             <div><div className="kicker">06 — Daily home</div><h2 data-split>Designed for<br />daily progress.</h2></div>
             <p>The workspace students reopen every morning. Three tabs, one focus list.</p>
           </div>
-          <div className="tabs" role="tablist" aria-label="Workspace preview tabs">
-            <input type="radio" name="dash-tab" id="tab-study" defaultChecked /><label htmlFor="tab-study" role="tab">Study</label>
-            <input type="radio" name="dash-tab" id="tab-project" /><label htmlFor="tab-project" role="tab">Project</label>
-            <input type="radio" name="dash-tab" id="tab-career" /><label htmlFor="tab-career" role="tab">Career</label>
+          <div className="tabs" role="radiogroup" aria-label="Workspace preview">
+            <input type="radio" name="dash-tab" id="tab-study" defaultChecked /><label htmlFor="tab-study">Study</label>
+            <input type="radio" name="dash-tab" id="tab-project" /><label htmlFor="tab-project">Project</label>
+            <input type="radio" name="dash-tab" id="tab-career" /><label htmlFor="tab-career">Career</label>
             <div className="tab-panels">
               <div className="tab-panel p-study"><h4>Today&apos;s focus</h4><p>Finish literature review · 10 SQL questions · 45-min Data Mining revision</p><div className="progress"><i style={{ width: "78%" }} /></div></div>
               <div className="tab-panel p-project"><h4>Major project — Milestone 3 of 5</h4><p>Scope trimmed by Project Guide · Viva Qs ready · Demo due Fri</p><div className="progress"><i style={{ width: "62%", background: "#7dbbc6" }} /></div></div>

@@ -3,12 +3,17 @@ services:
     build: .
     ports:
       - "3000:3000"
+    volumes:
+      - uploads:/app/storage
     environment:
+      LOCAL_STORAGE_DIR: /app/storage
       DATABASE_URL: postgresql://backoff:backoff@db:5432/backoff
       AUTH_SECRET: change-me
       REDIS_URL: redis://redis:6379
       JOB_EXECUTION_MODE: redis
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
@@ -21,16 +26,29 @@ services:
   worker:
     build: .
     command: bun run worker
+    volumes:
+      - uploads:/app/storage
     environment:
+      LOCAL_STORAGE_DIR: /app/storage
       DATABASE_URL: postgresql://backoff:backoff@db:5432/backoff
       AUTH_SECRET: change-me
       REDIS_URL: redis://redis:6379
       JOB_EXECUTION_MODE: redis
       WORKER_CONCURRENCY: 5
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+  migrate:
+    build: .
+    command: bunx prisma migrate deploy --schema prisma/postgres/schema.prisma
+    environment:
+      DATABASE_URL: postgresql://backoff:backoff@db:5432/backoff
+    depends_on:
+      db:
         condition: service_healthy
   db:
     image: pgvector/pgvector:pg16
@@ -55,4 +73,5 @@ services:
       timeout: 5s
       retries: 5
 volumes:
+  uploads:
   pgdata:

@@ -9,7 +9,7 @@ export const GET = handleApi(async (_request, { userId }) => {
   });
   if (!user) throw notFound("User");
 
-  const [agents, projects, tasks, files, fileChunks, subjects, applications, approvals, conversations,
+  const [agents, projects, tasks, files, fileChunks, subjects, careerGoals, applications, approvals, conversations,
     agentRuns, toolCalls, recommendations, responsibilities, notifications, noteLinks, noteRevisions,
     auditEvents, integrations, usageEvents, subscription, jobRecords, memberships] = await Promise.all([
     db.agent.findMany({ where: { ownerId: userId } }),
@@ -18,6 +18,7 @@ export const GET = handleApi(async (_request, { userId }) => {
     db.file.findMany({ where: { ownerId: userId }, select: { id: true, ownerId: true, name: true, mimeType: true, size: true, status: true, textContent: true, failureReason: true, subjectId: true, projectId: true, careerGoalId: true, folder: true, tags: true, createdAt: true } }),
     db.fileChunk.findMany({ where: { ownerId: userId } }),
     db.subject.findMany({ where: { ownerId: userId }, include: { topics: { include: { evidence: true } }, outcomes: true, sessions: true } }),
+    db.careerGoal.findMany({ where: { ownerId: userId } }),
     db.application.findMany({ where: { ownerId: userId } }),
     db.approval.findMany({ where: { ownerId: userId } }),
     db.conversation.findMany({ where: { userId }, include: { messages: true } }),
@@ -47,6 +48,7 @@ export const GET = handleApi(async (_request, { userId }) => {
     files,
     fileChunks,
     courses: subjects,
+    careerGoals,
     applications,
     approvals,
     conversations,

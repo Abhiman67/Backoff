@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { db } from "@/lib/db";
+import { db as client } from "@/lib/db";
 import type { AgentTool } from "../types";
 
 const dueDateSchema = z
@@ -22,6 +22,7 @@ export const createTaskTool: AgentTool<z.infer<typeof createTaskInputSchema>, Cr
   risk: "workspace_write",
   inputSchema: createTaskInputSchema,
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     if (input.projectId) {
       const p = await db.project.findFirst({ where: { id: input.projectId, ownerId: ctx.ownerId }, select: { id: true } });
       if (!p) throw new Error("Project not found");
@@ -50,6 +51,7 @@ export const updateTaskTool: AgentTool<{ taskId: string; status?: string; title?
     title: z.string().min(1).max(200).optional(),
   }),
   execute: async (input, ctx) => {
+    const db = ctx.tx ?? client;
     const existing = await db.task.findFirst({ where: { id: input.taskId, ownerId: ctx.ownerId } });
     if (!existing) throw new Error("Task not found");
     const updated = await db.task.update({

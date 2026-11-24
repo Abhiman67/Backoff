@@ -11,6 +11,7 @@ type Application = {
   url: string;
   status: string;
   notes: string;
+  followUpDate: string | null;
 };
 
 type FileRow = {
@@ -79,6 +80,8 @@ export default function CareerPage() {
   const [notesText, setNotesText] = useState("");
   const [deletingApp, setDeletingApp] = useState<Application | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [careerError, setCareerError] = useState("");
+  const [savingFollowUp, setSavingFollowUp] = useState<string | null>(null);
 
   // Drag & Drop State
   const [draggedAppId, setDraggedAppId] = useState<string | null>(null);
@@ -135,14 +138,33 @@ export default function CareerPage() {
   }
 
   async function move(id: string, status: string) {
-    // Optimistic update
-    setApps((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-    await fetch("/api/applications", {
+    setCareerError("");
+    const response = await fetch("/api/applications", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
+    if (!response.ok) { setCareerError("Could not update the application stage. Try again."); return; }
     load();
+  }
+
+  async function saveFollowUpDate(application: Application, followUpDate: string) {
+    setSavingFollowUp(application.id);
+    setCareerError("");
+    try {
+      const response = await fetch("/api/applications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: application.id, followUpDate: followUpDate || null }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message ?? "Could not save this reminder.");
+      setApps((current) => current.map((item) => item.id === application.id ? { ...item, followUpDate: data.application.followUpDate ?? null } : item));
+    } catch (cause) {
+      setCareerError(cause instanceof Error ? cause.message : "Could not save this reminder.");
+    } finally {
+      setSavingFollowUp(null);
+    }
   }
 
   function nudgeStage(a: Application, direction: "next" | "prev") {
@@ -233,6 +255,7 @@ export default function CareerPage() {
           <p>Track applications on your Kanban board, analyze skill gaps, and draft cover letters with Career Scout.</p>
         </div>
       </div>
+      {careerError && <p className="files-error" role="alert">{careerError}</p>}
 
       <div className="grid">
         <section className="card">
@@ -559,6 +582,11 @@ export default function CareerPage() {
 
                           <h4 className="kanban-card-role">{a.role}</h4>
 
+                          <label className="career-follow-up">
+                            <span>{savingFollowUp === a.id ? "Saving reminder…" : a.followUpDate ? "Follow-up · appears in Tasks calendar" : "Add follow-up to Tasks calendar"}</span>
+                            <input type="date" value={a.followUpDate ?? ""} aria-label={`Follow-up date for ${a.role} at ${a.company}`} onChange={(event) => void saveFollowUpDate(a, event.target.value)} />
+                          </label>
+
                           {a.notes && (
                             <div
                               onClick={() => {
@@ -590,6 +618,7 @@ export default function CareerPage() {
                               onClick={() => nudgeStage(a, "prev")}
                               disabled={!hasPrev}
                               className="kanban-move-btn"
+                              aria-label={`Move ${a.role} at ${a.company} back one stage`}
                               title="Move back a stage"
                             >
                               ‹
@@ -599,7 +628,7 @@ export default function CareerPage() {
                               <button
                                 type="button"
                                 onClick={() => coverLetter(a)}
-                                className="tag"
+                                className="career-card-action career-card-action-primary"
                                 title="Draft cover letter with AI"
                               >
                                 Letter
@@ -610,7 +639,7 @@ export default function CareerPage() {
                                   setEditingNotesApp(a);
                                   setNotesText(a.notes || "");
                                 }}
-                                className="tag"
+                                className="career-card-action"
                                 title="Add interview notes & contacts"
                               >
                                 Notes
@@ -622,6 +651,7 @@ export default function CareerPage() {
                               onClick={() => nudgeStage(a, "next")}
                               disabled={!hasNext}
                               className="kanban-move-btn"
+                              aria-label={`Move ${a.role} at ${a.company} forward one stage`}
                               title="Advance to next stage"
                             >
                               ›
@@ -650,7 +680,7 @@ export default function CareerPage() {
               </p>
             ) : (
               apps.map((a) => (
-                <div key={a.id} className="list-row" style={{ alignItems: "center" }}>
+                <div key={a.id} className="list-row career-list-application" style={{ alignItems: "center" }}>
                   <div className="agent-icon green" style={{ margin: 0 }}>↗</div>
                   <div className="grow">
                     <b>{a.role} · {a.company}</b>
@@ -666,6 +696,10 @@ export default function CareerPage() {
                     </div>
                   </div>
 
+                  <label className="career-follow-up">
+                    <span>{a.followUpDate ? "Follow-up · Tasks calendar" : "Add calendar reminder"}</span>
+                    <input type="date" value={a.followUpDate ?? ""} aria-label={`Follow-up date for ${a.role} at ${a.company}`} onChange={(event) => void saveFollowUpDate(a, event.target.value)} />
+                  </label>
                   <Dropdown
                     label="Application status"
                     value={a.status}
@@ -678,12 +712,12 @@ export default function CareerPage() {
                       setEditingNotesApp(a);
                       setNotesText(a.notes || "");
                     }}
-                    className="tag"
+                    className="career-card-action"
                   >
                     {a.notes ? "View notes" : "Add note"}
                   </button>
 
-                  <button onClick={() => coverLetter(a)} className="tag">
+                  <button onClick={() => coverLetter(a)} className="career-card-action career-card-action-primary">
                     Draft letter
                   </button>
 

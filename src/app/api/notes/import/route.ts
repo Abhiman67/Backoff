@@ -92,12 +92,10 @@ export const POST = handleApi(async (request, { userId }) => {
       }, select: { id: true, name: true, textContent: true, size: true, folder: true, tags: true, subjectId: true, projectId: true, careerGoalId: true } }));
     }
 
-    const newTitles = new Set(notes.map((note) => note.name.replace(/\.md$/i, "").toLocaleLowerCase()));
-    const referencesToNewNotes = uniqueNotes.flatMap((note) => [...new Set([...note.content.matchAll(/\[\[([^\]]+)\]\]/g)].map((match) => match[1].trim()))].filter((target) => newTitles.has(target.toLocaleLowerCase())).map((target) => `[[${target}]]`));
-    const inboundSources = referencesToNewNotes.length ? await tx.file.findMany({
-      where: { ownerId: userId, mimeType: "text/markdown", status: { not: "deleted" }, OR: [...new Set(referencesToNewNotes)].map((reference) => ({ textContent: { contains: reference } })) },
+    const inboundSources = await tx.file.findMany({
+      where: { ownerId: userId, mimeType: "text/markdown", status: { not: "deleted" }, textContent: { contains: "[[" } },
       select: { id: true, name: true, textContent: true },
-    }) : [];
+    });
     const allNotes = await tx.file.findMany({ where: { ownerId: userId, mimeType: "text/markdown", status: { not: "deleted" } }, select: { id: true, name: true } });
     const byName = new Map(allNotes.map((note) => [note.name.toLocaleLowerCase(), note]));
     const sources = [...new Map([...inboundSources, ...notes].map((note) => [note.id, note])).values()];

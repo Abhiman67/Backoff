@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const GOALS = ["Improve grades", "Complete major project", "Find internship", "Prepare for placements", "Improve coding", "Improve communication"];
+import { onboardingGoals, onboardingTeam } from "@/lib/onboarding-team";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -22,24 +22,39 @@ export default function OnboardingPage() {
     setForm((f) => ({ ...f, goals: f.goals.includes(g) ? f.goals.filter((x) => x !== g) : [...f.goals, g] }));
   }
 
-  async function finish() {
+  async function finish(skip = false) {
+    if (saving || checkingSession) return;
     setSaving(true);
     setError("");
     try {
-    const res = await fetch("/api/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        institution: form.institution, degree: form.degree, semester: form.semester,
-        goals: form.goals, subjects: form.subjects.split(",").map((s) => s.trim()).filter(Boolean),
-        skills: form.skills.split(",").map((s) => s.trim()).filter(Boolean),
-        careerTarget: form.careerTarget, studyHours: form.studyHours, onboardingDone: true,
-      }),
-    });
-    if (!res.ok) throw new Error("We couldn’t save your setup. Try again.");
-    const agents = await fetch("/api/agents/ensure", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goals: form.goals }) });
-    if (!agents.ok) throw new Error("Your setup was saved, but workspace preparation failed. Try opening your workspace again.");
-    router.push("/app");
+      const agents = await fetch("/api/agents/ensure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goals: skip ? [] : form.goals }),
+      });
+      if (agents.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      if (!agents.ok) throw new Error("We couldn’t prepare your workspace. Please try again.");
+
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(skip ? { onboardingDone: true } : {
+          institution: form.institution, degree: form.degree, semester: form.semester,
+          goals: form.goals, subjects: form.subjects.split(",").map((s) => s.trim()).filter(Boolean),
+          skills: form.skills.split(",").map((s) => s.trim()).filter(Boolean),
+          careerTarget: form.careerTarget, studyHours: form.studyHours, onboardingDone: true,
+        }),
+      });
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      if (!res.ok) throw new Error("We couldn’t save your setup. Please try again.");
+      router.replace("/app");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setSaving(false);
@@ -47,7 +62,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="onboarding-page mx-auto max-w-xl px-5 py-12">
+    <main id="main" tabIndex={-1} className="onboarding-page mx-auto max-w-xl px-5 py-12">
       <p className="text-sm text-muted">Step {step} of 4 · Build your student context. You can skip and finish later.</p>
       <div className="mt-2 h-2 rounded-full bg-line"><div className="h-2 rounded-full bg-brand" style={{ width: `${step * 25}%` }} /></div>
       {step === 1 && (
@@ -64,7 +79,7 @@ export default function OnboardingPage() {
           <h1 className="text-2xl font-extrabold">What are you moving forward?</h1>
           <p className="text-sm text-muted">Pick any that matter this semester. You can change these later.</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {GOALS.map((g) => (
+            {onboardingGoals.map((g) => (
               <button type="button" key={g} aria-pressed={form.goals.includes(g)} onClick={() => toggleGoal(g)} className={`rounded-full border px-4 py-2 text-sm font-bold ${form.goals.includes(g) ? "bg-ink text-white" : "bg-card"}`}>{g}</button>
             ))}
           </div>
@@ -84,16 +99,16 @@ export default function OnboardingPage() {
       {step === 4 && (
         <div className="mt-6">
           <h1 className="text-2xl font-extrabold">Your student workspace is ready</h1>
-          <p className="text-sm text-muted">We&apos;ll start with Study Coach, Project Guide, and Career Scout. Connect Google Classroom from your home screen when you’re ready.</p>
+          <p className="text-sm text-muted">We&apos;ll start with {new Intl.ListFormat("en").format(onboardingTeam(form.goals).map(agent => agent.name))}. Connect Google Classroom from your home screen when you’re ready.</p>
           <div className="onboarding-preview"><b>{form.goals.length ? form.goals.join(" · ") : "A calmer way to move through your semester"}</b><span>{form.studyHours} hours/day · {form.subjects || "your subjects"}</span></div>
         </div>
       )}
       {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
       <div className="mt-8 flex gap-2">
-        {step > 1 && <button type="button" onClick={() => setStep((current) => current - 1)} className="rounded-full border border-line px-5 py-2.5 font-bold">Back</button>}
-        {step < 4 ? <button type="button" onClick={() => setStep((current) => current + 1)} className="rounded-full bg-ink px-5 py-2.5 font-bold text-white">Next</button>
+        {step > 1 && <button type="button" disabled={saving} onClick={() => setStep((current) => current - 1)} className="rounded-full border border-line px-5 py-2.5 font-bold">Back</button>}
+        {step < 4 ? <button type="button" disabled={saving} onClick={() => { setError(""); setStep((current) => current + 1); }} className="rounded-full bg-ink px-5 py-2.5 font-bold text-white">Next</button>
           : <button type="button" onClick={() => void finish()} disabled={saving || checkingSession} className="rounded-full bg-brand px-5 py-2.5 font-bold text-white">{saving ? "Saving…" : "Open my workspace"}</button>}
-        <button type="button" onClick={() => void finish()} disabled={saving || checkingSession} className="text-sm underline">{saving ? "Saving…" : "Skip for now"}</button>
+        <button type="button" onClick={() => void finish(true)} disabled={saving || checkingSession} className="text-sm underline">{saving ? "Saving…" : "Skip for now"}</button>
       </div>
     </main>
   );

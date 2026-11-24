@@ -21,8 +21,9 @@ export const GET = handleApi(async (_, { userId, requestId }) => {
   }
   try {
     const { materials, restrictedCourseCount } = await fetchClassroomMaterials(token);
-    const importedDriveFileIds = (await db.file.findMany({ where: { ownerId: userId, sourceProvider: "classroom", sourceExternalId: { not: null } }, select: { sourceExternalId: true } })).flatMap((file) => file.sourceExternalId ? [file.sourceExternalId] : []);
-    return NextResponse.json({ materials, importedDriveFileIds, restrictedCourseCount }, { headers: { "Cache-Control": "no-store" } });
+    const importedFiles = await db.file.findMany({ where: { ownerId: userId, sourceProvider: "classroom", sourceExternalId: { not: null }, status: { not: "deleted" } }, select: { id: true, sourceExternalId: true, status: true, failureReason: true } });
+    const importedDriveFileIds = importedFiles.filter((file) => file.status !== "failed").flatMap((file) => file.sourceExternalId ? [file.sourceExternalId] : []);
+    return NextResponse.json({ materials, importedDriveFileIds, importedFiles: importedFiles.map((file) => ({ fileId: file.id, driveFileId: file.sourceExternalId, status: file.status, failureReason: file.failureReason })), restrictedCourseCount }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const failure = describeClassroomFailure(error);
     logError("classroom.materials.fetch_failed", { requestId, ...failure.details });

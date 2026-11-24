@@ -13,6 +13,9 @@ export async function POST(req: Request) {
   const body: unknown = await req.json().catch(() => null);
   const request = requestSchema.safeParse(body);
   if (request.success) {
+    if (process.env.NODE_ENV === "production" && (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM)) {
+      return NextResponse.json({ error: "Password reset email is not available right now. Please try again later." }, { status: 503 });
+    }
     const user = await db.user.findFirst({
       where: { email: request.data.email.toLowerCase(), passwordHash: { not: "" } },
       select: { id: true },

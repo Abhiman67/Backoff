@@ -21,8 +21,10 @@ export const POST = handleApi<{ id: string }>(async (req, { userId }, params) =>
   try {
     const generated = await generateStudyMaterial({ action, sourceName: file.name, sourceText: sourceText.slice(0, 40_000) });
     if (generated) return NextResponse.json({ ...generated, source: { id: file.id, label: file.name }, mode: "ai" });
-  } catch {
-    throw new HttpError("STUDY_GENERATION_FAILED", 502, "Study material could not be generated right now. Please retry.");
+  } catch (cause) {
+    const diagnostic = cause instanceof Error ? cause.message.slice(0, 180) : "Unknown provider error.";
+    if (process.env.NODE_ENV !== "production") console.error("File study generation failed:", diagnostic);
+    throw new HttpError("STUDY_GENERATION_FAILED", 502, process.env.NODE_ENV === "production" ? "Study material could not be generated right now. Please retry." : `Study material could not be generated. ${diagnostic}`);
   }
   const sourceSentences = sents.length > 0 ? sents : [sourceText.slice(0, 500)];
   if (action === "summarize") {
