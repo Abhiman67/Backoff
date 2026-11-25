@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@napi-rs/canvas", "tesseract.js", "pdfjs-dist"],
   outputFileTracingExcludes: { "/*": ["./storage/**", "./prisma/*.db*"] },
   outputFileTracingIncludes: {
+    "/api/files": ["./node_modules/@tesseract.js-data/eng/4.0.0/**/*", "./node_modules/tesseract.js-core/**/*"],
     "/api/integrations/classroom/import": ["./node_modules/@tesseract.js-data/eng/4.0.0/**/*", "./node_modules/tesseract.js-core/**/*"],
     "/api/files/*": ["./node_modules/@tesseract.js-data/eng/4.0.0/**/*", "./node_modules/tesseract.js-core/**/*"],
   },

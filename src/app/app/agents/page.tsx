@@ -68,6 +68,8 @@ export default function AgentsPage() {
   const [loadingThread, setLoadingThread] = useState(true);
   const [input, setInput] = useState("");
   const [handoffFiles, setHandoffFiles] = useState<ChatAttachment[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [turn, setTurn] = useState<Turn | null>(null);
   const pending = turn !== null && ["queued", "running", "retrying"].includes(turn.status);
@@ -431,7 +433,7 @@ export default function AgentsPage() {
 
   async function send(text?: string) {
     const prompt = (text ?? input).trim();
-    if (!prompt || busy || pending || sending.current || loadingThread || !agent) return;
+    if (!prompt || busy || pending || uploadingFile || sending.current || loadingThread || !agent) return;
     sending.current = true;
     setBusy(true);
     setError("");
@@ -458,6 +460,33 @@ export default function AgentsPage() {
     } finally {
       sending.current = false;
       setBusy(false);
+    }
+  }
+
+  async function uploadChatFile(file: File | undefined) {
+    if (!file || uploadingFile || handoffFiles.length >= MAX_CHAT_ATTACHMENTS) return;
+    setUploadingFile(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/files", { method: "POST", body: form });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message ?? "Could not upload this file.");
+      const parsed = z.object({ file: z.object({ id: z.string(), name: z.string(), status: z.string() }) }).parse(payload);
+      let status = parsed.file.status;
+      for (let attempt = 0; attempt < 15 && status !== "ready" && status !== "failed"; attempt++) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        const check = await fetch(`/api/files/${parsed.file.id}/status`, { cache: "no-store" });
+        if (check.ok) status = (await check.json()).status;
+      }
+      if (status !== "ready") throw new Error(status === "failed" ? "This file could not be processed. Try another file." : "The file is still processing. Find it in Files & notes and attach it when ready.");
+      setHandoffFiles((current) => [...current, { id: parsed.file.id, name: parsed.file.name }].slice(0, MAX_CHAT_ATTACHMENTS));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not upload this file.");
+    } finally {
+      setUploadingFile(false);
+      if (fileInput.current) fileInput.current.value = "";
     }
   }
 
@@ -658,6 +687,8 @@ export default function AgentsPage() {
         event.preventDefault();
         void send();
       }}>
+        <input ref={fileInput} type="file" accept=".pdf,.docx,.txt,.md" hidden aria-label="Choose a file for chat" onChange={(event) => void uploadChatFile(event.target.files?.[0])} />
+        <button className="file-action" type="button" aria-label="Attach file to chat" title="Attach PDF, DOCX, TXT or MD" disabled={uploadingFile || handoffFiles.length >= MAX_CHAT_ATTACHMENTS || busy || pending} onClick={() => fileInput.current?.click()}>{uploadingFile ? "Preparing…" : "+ File"}</button>
         <textarea
           aria-label={`Message ${agent?.name ?? "agent"}`}
           placeholder={`Message ${agent?.name ?? "your companion"}…`}
@@ -676,7 +707,7 @@ export default function AgentsPage() {
         <button
           className="agent-messenger-send"
           type="submit"
-          disabled={busy || pending || loadingThread || !agent || !input.trim()}
+          disabled={busy || pending || uploadingFile || loadingThread || !agent || !input.trim()}
           aria-label="Send message"
         >↑</button>
       </form>

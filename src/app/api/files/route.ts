@@ -5,6 +5,7 @@ import { objectStorage, storageKeyFor } from "@/lib/storage";
 import "@/lib/jobs/processors";
 import { enqueue } from "@/lib/jobs/queue";
 import { HttpError, handleApi, invalid } from "@/lib/api";
+import { extractDocxText, extractPdfText } from "@/lib/parser";
 
 export const GET = handleApi(async (req, { userId: id }) => {
   const url = new URL(req.url);
@@ -60,8 +61,16 @@ export const POST = handleApi(async (req, { userId: id }) => {
   }
 
   const tmpId = crypto.randomUUID();
-  const key = storageKeyFor(id, tmpId, file.name);
-  await objectStorage.put(key, bytes, file.type || "application/octet-stream");
+  const storeOriginal = Boolean(process.env.S3_BUCKET || process.env.LOCAL_STORAGE_DIR || process.env.NODE_ENV !== "production");
+  const key = storeOriginal ? storageKeyFor(id, tmpId, file.name) : null;
+  let textContent = "";
+  if (key) await objectStorage.put(key, bytes, file.type || "application/octet-stream");
+  else {
+    textContent = (name.endsWith(".pdf") ? await extractPdfText(buffer)
+      : name.endsWith(".docx") ? await extractDocxText(buffer)
+      : new TextDecoder().decode(bytes)).slice(0, 20_000);
+    if (!textContent.trim()) throw new HttpError("EMPTY_TEXT", 422, "This file has no readable text. Try a text-based PDF, DOCX, TXT or MD file.");
+  }
 
   const saved = await db.file.create({
     data: {
@@ -70,7 +79,7 @@ export const POST = handleApi(async (req, { userId: id }) => {
       mimeType: file.type || "application/octet-stream",
       size: file.size,
       status: "uploaded",
-      textContent: "",
+      textContent,
       storageKey: key,
     },
   });
