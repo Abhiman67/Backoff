@@ -11,6 +11,10 @@ import {
 } from "@/lib/study-coach-thread";
 import type { ReplySource } from "@/lib/reply-sources";
 import { ChatMessage } from "@/components/ChatMessage";
+import { z } from "zod";
+import { MAX_CHAT_ATTACHMENTS, type ChatAttachment } from "@/lib/chat-attachments";
+
+const fileHandoffSchema = z.object({ files: z.array(z.object({ id: z.string(), name: z.string() })).min(1).max(MAX_CHAT_ATTACHMENTS), prompt: z.string().min(1).max(500) });
 
 type Agent = { id: string; name: string; role: string; description: string; category: string; template: string };
 type Conversation = { id: string; title: string; projectId: string | null; updatedAt: string };
@@ -19,7 +23,7 @@ type Approval = { id: string; status: string };
 type Turn = { id: string; status: string };
 type Thread = { conversation: Conversation & { agentId: string; messages: Message[] }; approvals: Approval[]; turn: Turn | null };
 type TurnRequest =
-  | { kind: "chat"; message: string; assignmentId?: string; turnId: string }
+  | { kind: "chat"; message: string; assignmentId?: string; attachmentIds?: string[]; turnId: string }
   | { kind: "study_plan"; assignmentId: string; turnId: string }
   | { kind: "retry"; turnId: string };
 
@@ -63,6 +67,7 @@ export default function AgentsPage() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loadingThread, setLoadingThread] = useState(true);
   const [input, setInput] = useState("");
+  const [handoffFiles, setHandoffFiles] = useState<ChatAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [turn, setTurn] = useState<Turn | null>(null);
   const pending = turn !== null && ["queued", "running", "retrying"].includes(turn.status);
@@ -166,13 +171,23 @@ export default function AgentsPage() {
         previousThread = sessionStorage.getItem("my-agents:thread");
       } catch {}
       const handoff = new URLSearchParams(window.location.search);
-      const selected = list.find((item) => item.id === handoff.get("agent"))
+      const selected = list.find((item) => item.id === handoff.get("agent") || item.template === handoff.get("agent"))
         ?? list.find((item: Agent) => item.id === previousAgent)
         ?? list.find((item: Agent) => item.template === "study-coach") ?? list[0];
       if (selected) {
         setAgentId(selected.id);
         const requestedThread = handoff.get("agent") === selected.id ? handoff.get("conversation") : null;
         await loadConversations(selected.id, requestedThread ?? (selected.id === previousAgent ? previousThread ?? undefined : undefined));
+        if (handoff.get("agent") === "study-coach" && selected.template === "study-coach") {
+          try {
+            const raw = sessionStorage.getItem("study-coach:file-handoff");
+            if (raw) {
+              const parsed = fileHandoffSchema.safeParse(JSON.parse(raw));
+              if (parsed.success) { setHandoffFiles(parsed.data.files); setInput(parsed.data.prompt); }
+              sessionStorage.removeItem("study-coach:file-handoff");
+            }
+          } catch { setError("Could not attach the Classroom files. Return to the course and try again."); }
+        }
         if (requestedThread) {
           const url = new URL(window.location.href);
           url.searchParams.delete("conversation");
@@ -435,8 +450,9 @@ export default function AgentsPage() {
         setConversationId(id);
         updateHistory(agent.id, (items) => [conversation, ...items]);
       }
-      await submitTurn(id, { kind: "chat", message: prompt, assignmentId: assignment?.assignmentId, turnId: crypto.randomUUID() });
+      await submitTurn(id, { kind: "chat", message: prompt, assignmentId: assignment?.assignmentId, attachmentIds: handoffFiles.map((file) => file.id), turnId: crypto.randomUUID() });
       if (text === undefined) setInput((draft) => draft.trim() === prompt ? "" : draft);
+      setHandoffFiles([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not send your message.");
     } finally {
@@ -636,6 +652,7 @@ export default function AgentsPage() {
           </div>
         </div>
       )}
+      {handoffFiles.length > 0 && <div className="study-thread-context"><span>Attached for this question: <strong>{handoffFiles.map((file) => file.name).join(", ")}</strong></span><button type="button" className="file-action" onClick={() => setHandoffFiles([])}>Remove files</button></div>}
       {error && <p className="agent-messenger-error" role="alert">{error}</p>}
       <form className="agent-messenger-composer" onSubmit={(event) => {
         event.preventDefault();

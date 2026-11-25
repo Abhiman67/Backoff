@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
+import { MAX_CHAT_ATTACHMENTS } from "@/lib/chat-attachments";
 
 type ImportedFile = { driveFileId: string | null; status: string };
 const courseItemSchema = z.object({
@@ -24,7 +26,7 @@ const materialsPayloadSchema = z.object({
   importedFiles: z.array(z.object({ driveFileId: z.string().nullable(), status: z.string() })).optional(),
   error: z.object({ message: z.string().optional() }).optional(),
 });
-const importPayloadSchema = z.object({ file: z.object({ status: z.string() }).optional(), error: z.object({ message: z.string().optional() }).optional() });
+const importPayloadSchema = z.object({ file: z.object({ id: z.string(), status: z.string() }).optional(), error: z.object({ message: z.string().optional() }).optional() });
 type ClassroomCourse = z.infer<typeof courseSchema>;
 type ClassroomMaterial = z.infer<typeof materialSchema>;
 
@@ -36,11 +38,13 @@ function fileActionLabel(status: string | undefined) {
 }
 
 export function ClassroomCourseView({ courseId }: { courseId: string }) {
+  const router = useRouter();
   const [course, setCourse] = useState<ClassroomCourse | null>(null);
   const [materials, setMaterials] = useState<ClassroomMaterial[]>([]);
   const [fileStatuses, setFileStatuses] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busyFileId, setBusyFileId] = useState("");
+  const [studyingId, setStudyingId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -71,7 +75,10 @@ export function ClassroomCourseView({ courseId }: { courseId: string }) {
     }
   }, [courseId]);
 
-  useEffect(() => { void loadCourse(); }, [loadCourse]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadCourse(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadCourse]);
 
   async function importFile(driveFileId: string) {
     if (busyFileId) return;
@@ -95,6 +102,37 @@ export function ClassroomCourseView({ courseId }: { courseId: string }) {
       setError(cause instanceof Error ? cause.message : "Could not import this course file.");
     } finally {
       setBusyFileId("");
+    }
+  }
+
+  async function studyAssignment(item: ClassroomCourse["assignments"][number]) {
+    if (studyingId || busyFileId) return;
+    setStudyingId(item.id);
+    setError("");
+    const attachments = [...new Map((item.driveAttachments ?? []).map((file) => [file.driveFileId, file])).values()].slice(0, MAX_CHAT_ATTACHMENTS);
+    try {
+      if (!attachments.length) throw new Error("This assignment has no supported Drive attachments. Open it in Classroom to review its materials.");
+      const ready: { id: string; name: string }[] = [];
+      for (const attachment of attachments) {
+        const response = await fetch("/api/integrations/classroom/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId: attachment.driveFileId }) });
+        const parsed = importPayloadSchema.safeParse(await response.json());
+        if (!parsed.success || !response.ok || !parsed.data.file) throw new Error(parsed.success ? parsed.data.error?.message ?? "Could not import this file." : "Could not read the import response.");
+        const { id } = parsed.data.file;
+        let status = parsed.data.file.status;
+        for (let attempt = 0; attempt < 15 && status !== "ready" && status !== "failed"; attempt++) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          const fileResponse = await fetch(`/api/files/${id}`, { cache: "no-store" });
+          if (fileResponse.ok) status = (await fileResponse.json()).file.status;
+        }
+        if (status !== "ready") throw new Error(`${attachment.title} is ${status === "failed" ? "unable to be processed" : "still processing"}. Check Files & notes, then try again.`);
+        ready.push({ id, name: attachment.title });
+        setFileStatuses((current) => ({ ...current, [attachment.driveFileId]: "ready" }));
+      }
+      sessionStorage.setItem("study-coach:file-handoff", JSON.stringify({ files: ready, prompt: `Help me understand ${item.title} in ${course?.name ?? "this course"} using the attached files.` }));
+      router.push("/app/agents?agent=study-coach");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not prepare this assignment for chat.");
+      setStudyingId("");
     }
   }
 
@@ -131,6 +169,7 @@ export function ClassroomCourseView({ courseId }: { courseId: string }) {
           <span className={`course-status-bullet bullet-${item.status}`} aria-hidden="true" />
           <div className="classroom-course-assignment-copy"><strong>{item.title}</strong><span>{item.type.replaceAll("_", " ")}{item.dueText ? ` · ${item.dueText}` : ""}</span></div>
           <span className={`course-due-tag tag-${item.status}`}>{item.status.replaceAll("_", " ")}</span>
+          {(item.driveAttachments?.length ?? 0) > 0 && <button className="button primary" type="button" disabled={Boolean(studyingId || busyFileId)} onClick={() => void studyAssignment(item)}>{studyingId === item.id ? "Preparing files…" : "Study with agent →"}</button>}
           {item.link && <a className="button secondary" href={item.link} target="_blank" rel="noreferrer">Open in Classroom ↗</a>}
         </li>)}
       </ul>}

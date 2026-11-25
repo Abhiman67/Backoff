@@ -95,7 +95,7 @@ export function ClassroomDashboard({
     return () => { cancelled = true; };
   }, [connectedState, defaultCourses]);
 
-  async function importClassroomFile(driveFileId: string) {
+  async function importClassroomFile(driveFileId: string, fileName: string) {
     if (importingFile) return;
     setImportingFile(driveFileId);
     setMaterialsMessage("");
@@ -116,9 +116,9 @@ export function ClassroomDashboard({
       }
       setImportFileStatuses((current) => ({ ...current, [driveFileId]: fileStatus }));
       setImportedFiles((current) => fileStatus === "failed" ? current.filter((id) => id !== driveFileId) : current.includes(driveFileId) ? current : [...current, driveFileId]);
-      setMaterialsMessage(fileStatus === "ready" ? "File is ready in Files & notes." : fileStatus === "failed" ? "The file was imported but could not be processed. Retry it here or check Files & notes." : data.alreadyImported ? "File processing restarted. It will appear in Files & notes when ready." : "File imported. VidyaSarthi is preparing it for your notes and agents.");
+      setMaterialsMessage(fileStatus === "ready" ? `${fileName} is ready in Files & notes. You can ask your agents about it.` : fileStatus === "failed" ? `${fileName} was copied, but its text could not be processed. Retry here or check Files & notes.` : data.alreadyImported ? `${fileName} is being processed again. Check Files & notes for its status.` : `${fileName} was copied to Files & notes. Its text is being prepared for search and agents.`);
     } catch (cause) {
-      setMaterialsMessage(cause instanceof Error ? cause.message : "Could not import this Classroom file.");
+      setMaterialsMessage(`${fileName}: ${cause instanceof Error ? cause.message : "Could not import this Classroom file."}`);
     } finally {
       setImportingFile("");
     }
@@ -459,7 +459,7 @@ export function ClassroomDashboard({
           {courses.length > 8 && <p style={{ color: "var(--color-muted)", fontSize: 12 }}>Showing 8 of {courses.length} courses. Tasks from all courses are included in your planner.</p>}
           <div className="classroom-materials-block">
             <div className="classroom-materials-heading">
-              <div><h3>Course materials</h3><p>Files, links, videos, and forms shared in your courses.</p></div>
+              <div><h3>Course materials</h3><p>Open items in Google, or copy supported files into Files & notes so your agents can search their text. Importing does not change Classroom.</p></div>
               <button type="button" className="grok-sync-btn" disabled={isSyncing} onClick={async () => {
                 setMaterialsMessage("");
                 try {
@@ -472,17 +472,17 @@ export function ClassroomDashboard({
                 } catch (cause) { setMaterialsMessage(cause instanceof Error ? cause.message : "Materials could not be refreshed."); }
               }}>Refresh materials</button>
             </div>
-            {materialsMessage && <p role="status" aria-live="polite" className="classroom-materials-message">{materialsMessage}{(materialsMessage.includes("Reconnect Google Classroom") || materialsMessage.includes("Connect Google Drive") || materialsMessage.includes("Reconnect Drive")) && <> <Link href="/app/settings/integrations">Manage connections →</Link></>}</p>}
+            {materialsMessage && <p role="status" aria-live="polite" className="classroom-materials-message">{materialsMessage}{(materialsMessage.includes("Reconnect Google Classroom") || materialsMessage.includes("Connect Google Drive") || materialsMessage.includes("Reconnect Drive")) && <> <Link href="/app/settings/integrations">Manage connections →</Link></>}{materialsMessage.includes("Files & notes") && <> <Link href="/app/files">Open Files & notes →</Link></>}</p>}
             {materials.length === 0 && !materialsMessage && <p className="classroom-materials-empty">No course materials found yet.</p>}
             {materials.length > 0 && <ul className="classroom-materials-list">{materials.map((material) => {
               const imported = material.driveFileId && importedFiles.includes(material.driveFileId);
               const driveFileId = material.driveFileId;
               const fileStatus = driveFileId ? importFileStatuses[driveFileId] : undefined;
               return <li key={`${material.courseId}:${material.id}`} className="classroom-material-row">
-                <div className="classroom-material-copy"><span className="classroom-material-kind">{material.kind}</span><strong>{material.title}</strong><span>{material.courseName} · {material.parentTitle}</span></div>
+                <div className="classroom-material-copy"><span className="classroom-material-kind">{material.kind}</span><strong>{material.title}</strong><span>{material.courseName} · {material.parentTitle}</span>{driveFileId && <span>{fileStatus === "ready" ? "Ready for search and agents" : fileStatus === "failed" ? "Text processing failed; retry available" : fileStatus === "uploaded" || fileStatus === "processing" ? "Preparing text for search and agents" : "Copy to Files & notes for search and agents"}</span>}</div>
                 <div className="classroom-material-actions">
                   {material.url && <a href={material.url} target="_blank" rel="noreferrer" className="course-action-link">Open in Google ↗</a>}
-                  {driveFileId && <button type="button" className="grok-sync-btn" disabled={Boolean(importingFile) || Boolean(imported && fileStatus !== "failed")} onClick={() => void importClassroomFile(driveFileId)}>{importingFile === driveFileId ? "Importing…" : fileStatus === "failed" ? "Retry processing" : fileStatus === "uploaded" || fileStatus === "processing" ? "Preparing…" : imported ? "Imported" : "Import to VidyaSarthi"}</button>}
+                  {driveFileId && (fileStatus === "ready" ? <Link href="/app/files" className="course-action-link">View in Files & notes →</Link> : <button type="button" className="grok-sync-btn" disabled={Boolean(importingFile) || Boolean(imported && fileStatus !== "failed")} onClick={() => void importClassroomFile(driveFileId, material.title)}>{importingFile === driveFileId ? "Importing…" : fileStatus === "failed" ? "Retry processing" : fileStatus === "uploaded" || fileStatus === "processing" ? "Preparing…" : imported ? "Imported" : "Import file"}</button>)}
                 </div>
               </li>;
             })}</ul>}
