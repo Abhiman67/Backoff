@@ -6,6 +6,7 @@ import { objectStorage, storageKeyFor } from "@/lib/storage";
 import { enqueue } from "@/lib/jobs/queue";
 import { getDriveAccessToken } from "./drive-token";
 import { downloadDriveFile } from "./drive";
+import { extractDocxText, extractPdfText } from "@/lib/parser";
 
 const ALLOWED = [".pdf", ".txt", ".md", ".docx"];
 
@@ -13,8 +14,8 @@ async function prepareClassroomFile(file: File) {
   if (file.status === "deleted") throw new HttpError("CLASSROOM_FILE_REMOVED", 409, "This file was removed from Files & notes.");
   let queuedFile = file;
   const retrying = file.status === "failed";
-  if (retrying && file.storageKey) {
-    const retried = await db.file.updateMany({ where: { id: file.id, ownerId: file.ownerId, status: "failed", storageKey: { not: null } }, data: { status: "uploaded", failureReason: null, textContent: "" } });
+  if (retrying && (file.storageKey || file.textContent)) {
+    const retried = await db.file.updateMany({ where: { id: file.id, ownerId: file.ownerId, status: "failed" }, data: { status: "uploaded", failureReason: null, ...(file.storageKey ? { textContent: "" } : {}) } });
     if (retried.count) queuedFile = await db.file.findUniqueOrThrow({ where: { id: file.id } });
   }
   if (queuedFile.status === "uploaded") {
@@ -45,19 +46,29 @@ export async function importClassroomFile({ userId, driveFileId, material }: {
   try { download = await downloadDriveFile(driveToken, driveFileId); }
   catch (error) { throw new HttpError("CLASSROOM_FILE_DOWNLOAD_FAILED", 502, error instanceof Error ? error.message : "Could not download this Classroom attachment."); }
   if (!ALLOWED.some((extension) => download.name.toLowerCase().endsWith(extension))) throw invalid("This attachment format is not supported yet. Import a PDF, TXT, MD, or DOCX file.");
-  const key = storageKeyFor(userId, crypto.randomUUID(), download.name);
-  await objectStorage.put(key, download.bytes, download.mimeType);
+  const storeOriginal = Boolean(process.env.S3_BUCKET || process.env.LOCAL_STORAGE_DIR || process.env.NODE_ENV !== "production");
+  const key = storeOriginal ? storageKeyFor(userId, crypto.randomUUID(), download.name) : null;
+  let extractedText = "";
+  if (key) await objectStorage.put(key, download.bytes, download.mimeType);
+  else {
+    const name = download.name.toLowerCase();
+    extractedText = name.endsWith(".pdf") ? await extractPdfText(download.bytes.buffer as ArrayBuffer)
+      : name.endsWith(".docx") ? await extractDocxText(download.bytes.buffer as ArrayBuffer)
+      : new TextDecoder().decode(download.bytes);
+    extractedText = extractedText.slice(0, 20_000);
+    if (!extractedText.trim()) throw new HttpError("EMPTY_TEXT", 422, "This file has no readable text. Open it in Google or try another attachment.");
+  }
   const subject = await db.subject.findUnique({ where: { ownerId_classroomCourseId: { ownerId: userId, classroomCourseId: material.courseId } }, select: { id: true } });
   let saved;
   try {
     saved = await db.file.create({ data: {
       ownerId: userId, name: download.name, mimeType: download.mimeType, size: download.bytes.length,
-      status: "uploaded", textContent: "", storageKey: key, sourceProvider: "classroom", sourceExternalId: driveFileId,
+      status: "uploaded", textContent: extractedText, storageKey: key, sourceProvider: "classroom", sourceExternalId: driveFileId,
       folder: `Classroom · ${material.courseName}`, subjectId: subject?.id,
       tags: ["classroom", material.courseName].filter(Boolean),
     } });
   } catch (error) {
-    await objectStorage.del(key).catch(() => undefined);
+    if (key) await objectStorage.del(key).catch(() => undefined);
     const duplicate = await db.file.findFirst({ where: { ownerId: userId, sourceProvider: "classroom", sourceExternalId: driveFileId } });
     if (duplicate) return { file: await prepareClassroomFile(duplicate), alreadyImported: true };
     throw error;
