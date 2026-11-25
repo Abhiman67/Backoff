@@ -3,6 +3,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import { createWorker } from "tesseract.js";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import path from "node:path";
+import { logError } from "@/lib/observability/logger";
 
 let ocrWorker: ReturnType<typeof createWorker> | undefined;
 
@@ -78,7 +79,7 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
       await loading.destroy();
     }
   } catch (err) {
-    if (process.env.NODE_ENV !== "production") console.warn("PDF parse error:", err);
+    logError("pdf.extract.failed", { error: err instanceof Error ? err.message : "unknown" });
     return "";
   }
 }
