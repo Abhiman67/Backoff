@@ -465,13 +465,22 @@ export default function AgentsPage() {
 
   async function uploadChatFile(file: File | undefined) {
     if (!file || uploadingFile || handoffFiles.length >= MAX_CHAT_ATTACHMENTS) return;
+    const selectedFile = file;
     setUploadingFile(true);
     setError("");
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await fetch("/api/files", { method: "POST", body: form });
-      const payload = await response.json();
+      async function upload(allowAiTranscription: boolean) {
+        const form = new FormData();
+        form.append("file", selectedFile);
+        if (allowAiTranscription) form.append("allowAiTranscription", "true");
+        const response = await fetch("/api/files", { method: "POST", body: form });
+        return { response, payload: await response.json() };
+      }
+      let { response, payload } = await upload(false);
+      if (!response.ok && payload.error?.code === "EMPTY_TEXT" && file.name.toLowerCase().endsWith(".pdf")) {
+        const consent = window.confirm("This PDF has no readable text. Send this file to Google's Gemini API to transcribe its pages? The AI transcription may contain mistakes and will be used as this chat's source.");
+        if (consent) ({ response, payload } = await upload(true));
+      }
       if (!response.ok) throw new Error(payload.error?.message ?? "Could not upload this file.");
       const parsed = z.object({ file: z.object({ id: z.string(), name: z.string(), status: z.string() }) }).parse(payload);
       let status = parsed.file.status;

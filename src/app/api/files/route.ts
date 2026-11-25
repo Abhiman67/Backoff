@@ -6,6 +6,7 @@ import "@/lib/jobs/processors";
 import { enqueue } from "@/lib/jobs/queue";
 import { HttpError, handleApi, invalid } from "@/lib/api";
 import { extractDocxText, extractPdfText } from "@/lib/parser";
+import { transcribePdfWithAi } from "@/lib/pdf-ai-transcription";
 
 export const GET = handleApi(async (req, { userId: id }) => {
   const url = new URL(req.url);
@@ -34,6 +35,7 @@ export const POST = handleApi(async (req, { userId: id }) => {
   if (!quota.allowed) throw new HttpError("QUOTA_EXCEEDED", 402, "File quota exceeded", false, { quota });
 
   const form = await req.formData();
+  const allowAiTranscription = form.get("allowAiTranscription") === "true";
   const file = form.get("file") as File | null;
   if (!file) throw invalid("No file");
   if (file.size > 10 * 1024 * 1024) throw new HttpError("FILE_TOO_LARGE", 413, "Max 10MB");
@@ -69,7 +71,11 @@ export const POST = handleApi(async (req, { userId: id }) => {
     textContent = (name.endsWith(".pdf") ? await extractPdfText(buffer)
       : name.endsWith(".docx") ? await extractDocxText(buffer)
       : new TextDecoder().decode(bytes)).slice(0, 20_000);
-    if (!textContent.trim()) throw new HttpError("EMPTY_TEXT", 422, "This file has no readable text. Try a text-based PDF, DOCX, TXT or MD file.");
+    if (!textContent.trim() && name.endsWith(".pdf") && allowAiTranscription) {
+      const transcription = await transcribePdfWithAi(bytes);
+      if (transcription) textContent = `[AI transcription of scanned PDF; check against the original]\n${transcription}`.slice(0, 20_000);
+    }
+    if (!textContent.trim()) throw new HttpError("EMPTY_TEXT", 422, "This file has no readable text. Try a text-based PDF or a clearer scan.");
   }
 
   const saved = await db.file.create({
