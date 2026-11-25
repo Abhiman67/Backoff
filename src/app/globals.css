@@ -758,6 +758,9 @@ body {
   font-size: 14px;
 }
 .agent-messenger-composer textarea:focus-visible { outline: none; }
+.agent-messenger-composer .agent-messenger-attach { color: var(--color-brand); font-size: 23px; line-height: 1; border-radius: 10px; }
+.agent-messenger-composer .agent-messenger-attach:hover { background: color-mix(in srgb, var(--color-brand) 8%, transparent); }
+.agent-messenger-composer .agent-messenger-attach:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
 .agent-messenger-composer .agent-messenger-send { background: var(--color-brand); color: white; }
 .agent-messenger button:disabled { cursor: default; }
 .agent-messenger-composer .agent-messenger-send:disabled { opacity: .45; }

@@ -688,7 +688,7 @@ export default function AgentsPage() {
         void send();
       }}>
         <input ref={fileInput} type="file" accept=".pdf,.docx,.txt,.md" hidden aria-label="Choose a file for chat" onChange={(event) => void uploadChatFile(event.target.files?.[0])} />
-        <button className="file-action" type="button" aria-label="Attach file to chat" title="Attach PDF, DOCX, TXT or MD" disabled={uploadingFile || handoffFiles.length >= MAX_CHAT_ATTACHMENTS || busy || pending} onClick={() => fileInput.current?.click()}>{uploadingFile ? "Preparing…" : "+ File"}</button>
+        <button className="agent-messenger-attach" type="button" aria-label={uploadingFile ? "Preparing file for chat" : "Attach file to chat"} title="Attach PDF, DOCX, TXT or MD" disabled={uploadingFile || handoffFiles.length >= MAX_CHAT_ATTACHMENTS || busy || pending} onClick={() => fileInput.current?.click()}>{uploadingFile ? "…" : "+"}</button>
         <textarea
           aria-label={`Message ${agent?.name ?? "agent"}`}
           placeholder={`Message ${agent?.name ?? "your companion"}…`}
