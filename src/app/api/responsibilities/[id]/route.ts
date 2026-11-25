@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handleApi, invalid, notFound } from "@/lib/api";
-import { ACTION_POLICIES, isValidSchedule } from "@/lib/responsibilities";
+import { ACTION_POLICIES, isValidSchedule, nextRunAfter } from "@/lib/responsibilities";
 
 const updateSchema = z.object({
   title: z.string().min(1).max(160).optional(),
@@ -33,7 +33,7 @@ export const PATCH = handleApi<{ id: string }>(async (req, { userId: id }, param
     data: {
       ...(parsed.data.title ? { title: parsed.data.title.slice(0, 160) } : {}),
       ...(parsed.data.instruction !== undefined ? { instruction: parsed.data.instruction.slice(0, 2000) } : {}),
-      ...(parsed.data.triggerValue ? { triggerValue: parsed.data.triggerValue, nextRunAt: new Date(Date.now() + 24 * 3600000) } : {}),
+      ...(parsed.data.triggerValue ? { triggerValue: parsed.data.triggerValue, nextRunAt: new Date(nextRunAfter(parsed.data.triggerValue, Date.now())!) } : {}),
       ...(parsed.data.actionPolicy ? { actionPolicy: parsed.data.actionPolicy } : {}),
       ...(parsed.data.status ? { status: parsed.data.status } : {}),
     },
